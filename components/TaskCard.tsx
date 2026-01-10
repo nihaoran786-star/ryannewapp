@@ -64,12 +64,25 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onCreateCharacter, lan
     return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  const togglePlay = (e?: React.MouseEvent) => {
+  /**
+   * Fixed play/pause interruption bug.
+   * video.play() returns a promise that must be resolved/handled to avoid console errors.
+   */
+  const togglePlay = async (e?: React.MouseEvent) => {
     e?.stopPropagation();
-    if (videoRef.current) {
-      if (isPlaying) videoRef.current.pause();
-      else videoRef.current.play();
-      setIsPlaying(!isPlaying);
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (video.paused) {
+      try {
+        await video.play();
+        setIsPlaying(true);
+      } catch (err) {
+        console.warn('Playback request was interrupted or failed:', err);
+      }
+    } else {
+      video.pause();
+      setIsPlaying(false);
     }
   };
 
@@ -149,14 +162,20 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onCreateCharacter, lan
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
+
+    // Sync initial play state
+    setIsPlaying(!video.paused);
+
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
     const onEnded = () => setIsPlaying(false);
+
     video.addEventListener('play', onPlay);
     video.addEventListener('pause', onPause);
     video.addEventListener('ended', onEnded);
     video.addEventListener('timeupdate', handleTimeUpdate);
     video.addEventListener('loadedmetadata', handleLoadedMetadata);
+
     return () => {
       video.removeEventListener('play', onPlay);
       video.removeEventListener('pause', onPause);
@@ -198,7 +217,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onCreateCharacter, lan
                     ${task.isCharacterAsset 
                         ? 'text-purple-600 bg-purple-100 border-purple-200' 
                         : 'text-[#007AFF] bg-blue-50 border-blue-100'}`}>
-                  {task.isCharacterAsset ? t.char : task.model.replace('sora2-', '').toUpperCase()}
+                  {task.isCharacterAsset ? t.char : (typeof task.model === 'string' ? task.model.replace('sora2-', '').toUpperCase() : 'VIDEO')}
                 </span>
                 <span className="text-[10px] text-[#86868B] flex items-center gap-1 font-medium">
                   <Clock size={10} /> {formatDate(task.createdAt)}
