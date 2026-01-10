@@ -1,14 +1,13 @@
 
-
 import React, { useState, useEffect } from 'react';
 import * as ReactRouterDOM from 'react-router-dom';
 import { 
   LayoutTemplate, ArrowLeft, RefreshCw, Wand2, Image as ImageIcon, 
-  Loader2, AlertCircle, Camera, User, Film, Download, Check
+  Loader2, AlertCircle, Camera, User, Film, Download, Check, Sparkles
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
-import { ScriptProject, StoryboardData, ImageModel, StoryboardCharacter, StoryboardShot } from '../types';
-import { generateStoryboardStructure } from '../services/scriptUtils';
+import { ScriptProject, StoryboardData, ImageModel, StoryboardCharacter, StoryboardShot, StoryboardScene } from '../types';
+import { generateStoryboardStructure, performDeepScriptAnalysis } from '../services/scriptUtils';
 import { createImageGenerationTask, queryImageTask } from '../services/imageService';
 
 const { useParams, useNavigate } = ReactRouterDOM as any;
@@ -18,32 +17,29 @@ const { useParams, useNavigate } = ReactRouterDOM as any;
  * Visualizes script scenes and characters with AI generation capabilities.
  */
 export const StoryboardPage = () => {
-  const { t, lang, activeChannel, channels } = useGlobal();
+  const { t, lang, activeChannel, channels, volcSettings } = useGlobal();
   const { projectId } = useParams();
   const navigate = useNavigate();
 
   const [project, setProject] = useState<ScriptProject | null>(null);
   const [loading, setLoading] = useState(true);
   const [generatingItems, setGeneratingItems] = useState<Record<string, boolean>>({});
-  const [error, setError] = useState<string | null>(null);
 
-  // Load project and initialize storyboard if needed
+  // Data Hydration
   useEffect(() => {
     if (!projectId) return;
 
-    const loadProject = () => {
+    const loadProject = async () => {
         const saved = localStorage.getItem('sora_script_projects');
         if (saved) {
             const projects: ScriptProject[] = JSON.parse(saved);
             const found = projects.find(p => p.id === projectId);
             
             if (found) {
-                // Phase 1 Mock: If storyboard data missing, generate it (simulate Deep Script Analysis)
+                // Phase 1 Mock: If storyboard data missing, generate it (Deep Analysis)
                 if (!found.storyboard || !found.storyboard.scenes) {
-                    console.log('Phase 1: Deep Script Analysis triggered...');
-                    const sbData = generateStoryboardStructure(found.content || '');
+                    const sbData = await performDeepScriptAnalysis(found.content || '', volcSettings);
                     found.storyboard = sbData;
-                    // Save back
                     const updatedList = projects.map(p => p.id === projectId ? found : p);
                     localStorage.setItem('sora_script_projects', JSON.stringify(updatedList));
                 }
@@ -54,16 +50,16 @@ export const StoryboardPage = () => {
     };
 
     loadProject();
-  }, [projectId]);
+  }, [projectId, volcSettings]);
 
-  // Polling for image generation status
+  // Polling
   useEffect(() => {
       const pollInterval = setInterval(async () => {
           if (!project?.storyboard) return;
           const sb = project.storyboard;
           let hasUpdates = false;
 
-          // Check Characters
+          // Poll Characters
           for (const char of sb.characters) {
              if (char.referenceImageId && char.status === 'processing') {
                  const status = await checkTaskStatus(char.referenceImageId);
@@ -80,7 +76,7 @@ export const StoryboardPage = () => {
              }
           }
 
-          // Check Shots
+          // Poll Shots
           for (const scene of sb.scenes) {
               for (const shot of scene.shots) {
                   if (shot.imageId && shot.status === 'processing') {
@@ -113,7 +109,7 @@ export const StoryboardPage = () => {
           const projects: ScriptProject[] = JSON.parse(saved);
           const updatedList = projects.map(p => p.id === updatedProj.id ? updatedProj : p);
           localStorage.setItem('sora_script_projects', JSON.stringify(updatedList));
-          setProject({...updatedProj}); // Force re-render
+          setProject({...updatedProj}); 
       }
   };
 
@@ -130,10 +126,11 @@ export const StoryboardPage = () => {
               status: isDone ? 'success' : isFailed ? 'failed' : 'processing'
           };
       } catch (e) {
-          return { done: false, failed: false }; // Retry next time
+          return { done: false, failed: false }; 
       }
   };
 
+  // Phase 2: Character Consistency Engine
   const handleGenerateCharacter = async (char: StoryboardCharacter) => {
       if (!activeChannel?.apiToken) { alert(t('missingToken')); return; }
       if (!project) return;
@@ -144,7 +141,8 @@ export const StoryboardPage = () => {
           const apiId = await createImageGenerationTask(
               activeChannel.baseUrl, 
               activeChannel.apiToken, 
-              char.visualDescription, 
+              // Prompt includes specific instruction for Character Sheet
+              `Character Design Sheet for Movie, ${char.visualDescription}, white background, multiple angles, cinematic lighting, photorealistic`, 
               ImageModel.NANO_BANANA_2,
               { size: '1:1', resolution: '1K' }
           );
@@ -158,17 +156,53 @@ export const StoryboardPage = () => {
       }
   };
 
+  // Phase 2: Prompt Assembly Engine
+  const buildShotPrompt = (shot: StoryboardShot, scene: StoryboardScene): string => {
+     let parts = [];
+
+     // 1. Atmosphere (Scene Setting)
+     if (scene.atmosphere) parts.push(`[Atmosphere: ${scene.atmosphere}]`);
+
+     // 2. Character Consistency (Context Injection)
+     if (project?.storyboard?.characters) {
+        // Find characters appearing in this shot (simple string match for now)
+        const relevantChars = project.storyboard.characters.filter(c => 
+            shot.text.includes(c.name) || shot.text.includes(c.name.toUpperCase())
+        );
+
+        relevantChars.forEach(char => {
+            // Inject visual description to maintain consistency
+            parts.push(`(Character ${char.name}: ${char.visualDescription})`);
+        });
+     }
+
+     // 3. Action
+     parts.push(shot.text);
+
+     // 4. Cinematic Boilerplate
+     parts.push("cinematic composition, 8k, film grain, highly detailed, photorealistic");
+
+     return parts.join(', ');
+  };
+
   const handleGenerateShot = async (sceneId: string, shot: StoryboardShot) => {
       if (!activeChannel?.apiToken) { alert(t('missingToken')); return; }
       if (!project) return;
 
+      // Check if characters are defined
+      const scene = project.storyboard?.scenes.find(s => s.id === sceneId);
+      if (!scene) return;
+
       setGeneratingItems(prev => ({...prev, [shot.id]: true}));
 
       try {
+          const prompt = buildShotPrompt(shot, scene);
+          console.log("Generated Prompt:", prompt);
+
           const apiId = await createImageGenerationTask(
               activeChannel.baseUrl, 
               activeChannel.apiToken, 
-              `${shot.promptPreFill}, cinematic, high quality`, 
+              prompt, 
               ImageModel.NANO_BANANA_2,
               { size: '16:9', resolution: '1K' }
           );
@@ -182,8 +216,6 @@ export const StoryboardPage = () => {
       }
   };
 
-  // --- Render Helpers ---
-
   if (loading) {
       return (
           <div className="h-full flex items-center justify-center bg-[#F5F5F7]">
@@ -192,16 +224,7 @@ export const StoryboardPage = () => {
       );
   }
 
-  if (!project) {
-      return (
-        <div className="h-full flex flex-col items-center justify-center p-8 text-center">
-            <h2 className="text-xl font-bold mb-4">Select a Project</h2>
-            <button onClick={() => navigate('/projects')} className="bg-[#007AFF] text-white px-6 py-2 rounded-full font-bold">
-                Go to Projects
-            </button>
-        </div>
-      );
-  }
+  if (!project) return null;
 
   return (
     <div className="h-full bg-[#F5F5F7] flex flex-col overflow-hidden">
@@ -221,25 +244,31 @@ export const StoryboardPage = () => {
       </header>
 
       <div className="flex-1 overflow-y-auto custom-scrollbar p-8">
-          {/* Cast Section */}
-          <section className="mb-12">
-              <h2 className="text-xs font-bold text-[#86868B] uppercase tracking-wider mb-4 flex items-center gap-2">
-                  <User size={14} /> {lang === 'zh' ? '角色定妆 (CAST)' : 'CAST & CHARACTERS'}
-              </h2>
-              <div className="flex gap-6 overflow-x-auto pb-6 custom-scrollbar-h">
+          {/* Cast Section (Progressive Disclosure) */}
+          <section className="mb-12 bg-white p-6 rounded-[24px] shadow-sm border border-gray-100/50">
+              <div className="flex items-center justify-between mb-6">
+                 <h2 className="text-xs font-bold text-[#86868B] uppercase tracking-wider flex items-center gap-2">
+                    <User size={14} /> {lang === 'zh' ? '角色定妆 (CAST)' : 'CAST & CHARACTERS'}
+                 </h2>
+                 <span className="text-[10px] text-orange-500 font-bold bg-orange-50 px-2 py-1 rounded-full flex items-center gap-1">
+                    <Sparkles size={10} />
+                    {lang === 'zh' ? '生成定妆照以保证一致性' : 'Generate reference images for consistency'}
+                 </span>
+              </div>
+              
+              <div className="flex gap-6 overflow-x-auto pb-4 custom-scrollbar-h">
                   {project.storyboard?.characters.map(char => (
-                      <div key={char.id} className="w-48 shrink-0 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col group relative">
-                          <div className="aspect-[3/4] bg-gray-50 relative">
+                      <div key={char.id} className="w-48 shrink-0 bg-[#F5F5F7] rounded-2xl overflow-hidden flex flex-col group relative border border-gray-200 hover:border-[#007AFF] transition-all">
+                          <div className="aspect-[3/4] bg-gray-200 relative">
                               {char.referenceImageUrl ? (
                                   <img src={char.referenceImageUrl} className="w-full h-full object-cover" />
                               ) : char.status === 'processing' || generatingItems[char.id] ? (
-                                  <div className="w-full h-full flex items-center justify-center">
+                                  <div className="w-full h-full flex items-center justify-center bg-white">
                                       <Loader2 className="animate-spin text-[#007AFF]" />
                                   </div>
                               ) : (
-                                  <div className="w-full h-full flex flex-col items-center justify-center text-gray-300 gap-2">
+                                  <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 gap-2 bg-gray-100">
                                       <User size={40} />
-                                      <span className="text-[10px] uppercase font-bold">No Visage</span>
                                   </div>
                               )}
                               
@@ -260,7 +289,7 @@ export const StoryboardPage = () => {
                   ))}
                   {(!project.storyboard?.characters || project.storyboard.characters.length === 0) && (
                       <div className="w-48 h-64 border-2 border-dashed border-gray-200 rounded-2xl flex items-center justify-center text-gray-400 text-xs">
-                          No characters detected
+                          No characters found
                       </div>
                   )}
               </div>
@@ -270,21 +299,25 @@ export const StoryboardPage = () => {
           <div className="space-y-12">
               {project.storyboard?.scenes.map(scene => (
                   <section key={scene.id} className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                      <div className="flex items-center gap-3 mb-6 sticky top-0 bg-[#F5F5F7]/95 backdrop-blur-sm z-10 py-2">
+                      <div className="flex items-center gap-3 mb-6 sticky top-0 bg-[#F5F5F7]/95 backdrop-blur-sm z-10 py-3 border-b border-gray-200/50">
                           <span className="text-xl font-black text-gray-300">#{scene.number}</span>
                           <h3 className="text-lg font-bold text-[#1D1D1F]">{scene.header}</h3>
-                          <span className="text-xs text-gray-400 bg-white px-2 py-1 rounded border border-gray-100">{scene.atmosphere.split(',')[0]}</span>
+                          {scene.atmosphere && (
+                             <span className="text-xs text-[#007AFF] bg-blue-50 px-2 py-1 rounded border border-blue-100 font-medium">
+                                Atmosphere: {scene.atmosphere.split(',')[0]}
+                             </span>
+                          )}
                       </div>
                       
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                           {scene.shots.map((shot, idx) => (
-                              <div key={shot.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
+                              <div key={shot.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow group">
                                   {/* Shot Image Preview */}
-                                  <div className="aspect-video bg-gray-100 relative group">
+                                  <div className="aspect-video bg-gray-100 relative">
                                       {shot.imageUrl ? (
                                           <img src={shot.imageUrl} className="w-full h-full object-cover" />
                                       ) : shot.status === 'processing' || generatingItems[shot.id] ? (
-                                          <div className="w-full h-full flex flex-col items-center justify-center gap-2">
+                                          <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-gray-50">
                                               <Loader2 className="animate-spin text-[#007AFF]" />
                                               <span className="text-[10px] font-bold text-gray-400">RENDERING</span>
                                           </div>
@@ -299,7 +332,7 @@ export const StoryboardPage = () => {
                                       <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                                           <button 
                                             onClick={() => handleGenerateShot(scene.id, shot)}
-                                            className="bg-[#007AFF] text-white p-2.5 rounded-full hover:bg-blue-600 transition-transform active:scale-95"
+                                            className="bg-[#007AFF] text-white p-2.5 rounded-full hover:bg-blue-600 transition-transform active:scale-95 shadow-lg"
                                             title="Generate Shot"
                                           >
                                               <Wand2 size={16} />
@@ -322,7 +355,7 @@ export const StoryboardPage = () => {
                                           {shot.status === 'failed' && <AlertCircle size={12} className="text-red-500" />}
                                           {shot.status === 'success' && <Check size={12} className="text-green-500" />}
                                       </div>
-                                      <p className="text-xs text-[#1D1D1F] leading-relaxed font-medium line-clamp-3">
+                                      <p className="text-xs text-[#1D1D1F] leading-relaxed font-medium line-clamp-3 group-hover:line-clamp-none transition-all">
                                           {shot.text}
                                       </p>
                                   </div>

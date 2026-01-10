@@ -1,14 +1,18 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   FileText, Plus, Save, Upload, PenTool, Layout, 
   BarChart, Mic, ChevronRight, ChevronLeft, Search, 
   Sparkles, MoreHorizontal, User, BookOpen, Loader2,
-  X, Wand2, AlignLeft, Scissors, Minimize2
+  X, Wand2, AlignLeft, Scissors, Minimize2, BrainCircuit, ArrowRight
 } from 'lucide-react';
 import { ScriptProject, ScriptScene, ScriptCharacter, ScriptLine } from '../types';
-import { parseScript, extractScenes, extractCharacters } from '../services/scriptUtils';
+import { parseScript, extractScenes, extractCharacters, performDeepScriptAnalysis } from '../services/scriptUtils';
 import { useGlobal } from '../context/GlobalContext';
 import { callVolcChatApi, PROMPTS } from '../services/volcEngineService';
+import * as ReactRouterDOM from 'react-router-dom';
+
+const { useNavigate } = ReactRouterDOM as any;
 
 interface ScriptEditorProps {
   lang?: 'zh' | 'en'; 
@@ -18,6 +22,7 @@ interface ScriptEditorProps {
 
 export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack }) => {
   const { volcSettings, t, lang } = useGlobal();
+  const navigate = useNavigate();
   const [projects, setProjects] = useState<ScriptProject[]>([]);
   const [editorContent, setEditorContent] = useState('');
   const [projectTitle, setProjectTitle] = useState('');
@@ -27,6 +32,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack })
   const [showRightPanel, setShowRightPanel] = useState(true);
   const [analyzeMode, setAnalyzeMode] = useState(false);
   const [isAiProcessing, setIsAiProcessing] = useState(false);
+  const [isDeepAnalyzing, setIsDeepAnalyzing] = useState(false);
 
   // Floating Toolbar State
   const [toolbarPosition, setToolbarPosition] = useState<{top: number, left: number} | null>(null);
@@ -73,18 +79,13 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack })
     const textarea = textareaRef.current;
     if (!textarea) return;
 
-    // Use a small timeout to allow selection to update
     setTimeout(() => {
         const start = textarea.selectionStart;
         const end = textarea.selectionEnd;
 
         if (start !== end) {
-            // Text is selected
-            // Calculate position based on mouse event to keep it simple and near the cursor
-            // Adjusting offset to appear above the cursor
             const x = e.clientX;
             const y = e.clientY;
-            
             setToolbarPosition({ top: y - 60, left: x });
             setShowToolbar(true);
         } else {
@@ -93,7 +94,6 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack })
     }, 10);
   };
 
-  // Hide toolbar when typing
   const handleKeyDown = () => {
     if (showToolbar) setShowToolbar(false);
   };
@@ -104,9 +104,38 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack })
       if (textareaRef.current) textareaRef.current.scrollTop = index * 24; 
   };
 
-  // AI Copilot Logic
+  // Phase 1: Deep Analysis Trigger
+  const handleDeepAnalysis = async () => {
+    if (!projectId) return;
+    setIsDeepAnalyzing(true);
+    
+    // Save current content first
+    const updatedProjects = projects.map(p => 
+        p.id === projectId ? { ...p, content: editorContent, title: projectTitle } : p
+    );
+    localStorage.setItem('sora_script_projects', JSON.stringify(updatedProjects));
+
+    try {
+        // Perform Analysis (Regex + Volc AI)
+        const storyboardData = await performDeepScriptAnalysis(editorContent, volcSettings);
+        
+        // Save Storyboard Data
+        const finalProjects = updatedProjects.map(p => 
+            p.id === projectId ? { ...p, storyboard: storyboardData } : p
+        );
+        localStorage.setItem('sora_script_projects', JSON.stringify(finalProjects));
+        setProjects(finalProjects);
+
+        // Transition to Phase 2
+        navigate(`/projects/${projectId}/storyboard`);
+    } catch (e) {
+        alert("Analysis failed. Please check your settings.");
+    } finally {
+        setIsDeepAnalyzing(false);
+    }
+  };
+
   const handleAIAction = async (action: 'EXPAND' | 'SHORTEN' | 'FORMAT') => {
-    // Get selected text from textarea
     const textarea = textareaRef.current;
     if (!textarea) return;
 
@@ -114,21 +143,12 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack })
     const end = textarea.selectionEnd;
     const selectedText = editorContent.substring(start, end);
 
-    if (!selectedText.trim()) {
-        // Should ideally not happen if toolbar is only shown on selection
-        return;
-    }
-
-    if (!volcSettings.apiKey || !volcSettings.model) {
-        alert(t('configureVolcAlert'));
-        return;
-    }
+    if (!selectedText.trim()) return;
+    if (!volcSettings.apiKey) { alert(t('configureVolcAlert')); return; }
 
     setIsAiProcessing(true);
     try {
         const result = await callVolcChatApi(volcSettings, PROMPTS[action], selectedText);
-        
-        // Insert result back into editor
         const newContent = editorContent.substring(0, start) + result + editorContent.substring(end);
         setEditorContent(newContent);
         setShowToolbar(false);
@@ -200,7 +220,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack })
 
   return (
     <div className="flex h-full bg-[#F5F5F7] relative">
-      {/* Floating Toolbar (Portal-like absolute positioning) */}
+      {/* Floating Toolbar */}
       {showToolbar && toolbarPosition && (
         <div 
             className="fixed z-50 flex flex-col items-center animate-in zoom-in-95 duration-200"
@@ -219,46 +239,19 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack })
                     </div>
                 ) : (
                     <>
-                        <button 
-                            onClick={(e) => { e.stopPropagation(); handleAIAction('EXPAND'); }}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-white/20 transition-colors text-xs font-medium"
-                            title={t('expand')}
-                        >
-                            <Wand2 size={14} />
-                            {lang === 'zh' ? '扩写' : 'Expand'}
-                        </button>
-                        <button 
-                            onClick={(e) => { e.stopPropagation(); handleAIAction('SHORTEN'); }}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-white/20 transition-colors text-xs font-medium"
-                            title={t('shorten')}
-                        >
-                            <Scissors size={14} />
-                            {lang === 'zh' ? '缩写' : 'Shorten'}
-                        </button>
-                        <button 
-                            onClick={(e) => { e.stopPropagation(); handleAIAction('FORMAT'); }}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-white/20 transition-colors text-xs font-medium"
-                            title={t('fixFormat')}
-                        >
-                            <AlignLeft size={14} />
-                            {lang === 'zh' ? '格式' : 'Format'}
-                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); handleAIAction('EXPAND'); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-white/20 transition-colors text-xs font-medium"><Wand2 size={14} />{t('expand')}</button>
+                        <button onClick={(e) => { e.stopPropagation(); handleAIAction('SHORTEN'); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-white/20 transition-colors text-xs font-medium"><Scissors size={14} />{t('shorten')}</button>
+                        <button onClick={(e) => { e.stopPropagation(); handleAIAction('FORMAT'); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-white/20 transition-colors text-xs font-medium"><AlignLeft size={14} />{t('fixFormat')}</button>
                     </>
                 )}
                 <div className="w-[1px] h-4 bg-white/20 mx-1" />
-                <button 
-                    onClick={() => setShowToolbar(false)}
-                    className="p-1.5 rounded-full hover:bg-white/20 text-gray-400 hover:text-white transition-colors"
-                >
-                    <X size={12} />
-                </button>
+                <button onClick={() => setShowToolbar(false)} className="p-1.5 rounded-full hover:bg-white/20 text-gray-400 hover:text-white transition-colors"><X size={12} /></button>
             </div>
-            {/* Arrow */}
             <div className="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-[#1D1D1F] mt-[-1px]"></div>
         </div>
       )}
 
-      {/* Left Panel: Navigation & Scenes */}
+      {/* Left Panel */}
       <div className={`transition-all duration-300 ease-in-out border-r border-[#E5E5EA] bg-white flex flex-col ${showLeftPanel ? 'w-64' : 'w-0 overflow-hidden opacity-0'}`}>
           <div className="p-4 border-b border-[#E5E5EA]">
               <h3 className="text-xs font-bold text-[#86868B] uppercase tracking-wider mb-2">{t('scenes')} ({scenes.length})</h3>
@@ -284,7 +277,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack })
           </div>
       </div>
 
-      {/* Main Editor Area */}
+      {/* Main Editor */}
       <div className="flex-1 flex flex-col min-w-0 relative">
           <div className="h-12 border-b border-[#E5E5EA] bg-white/80 backdrop-blur-md flex items-center justify-between px-4 z-10 sticky top-0">
               <div className="flex items-center gap-2">
@@ -306,15 +299,18 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack })
                   />
               </div>
               <div className="flex items-center gap-2">
-                  <div className="text-[10px] text-[#86868B] font-mono mr-2 hidden md:block">
-                      {activeProject?.lastModified ? `${t('saved')} ${new Date(activeProject.lastModified).toLocaleTimeString()}` : ''}
-                  </div>
                   <button 
-                    onClick={() => setAnalyzeMode(!analyzeMode)}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${analyzeMode ? 'bg-purple-100 text-purple-600' : 'text-[#86868B] hover:bg-[#F5F5F7]'}`}
+                     onClick={handleDeepAnalysis}
+                     disabled={isDeepAnalyzing}
+                     className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm ${isDeepAnalyzing ? 'bg-gray-100 text-gray-400' : 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white hover:shadow-purple-500/20 active:scale-95'}`}
                   >
-                      <Sparkles size={14} /> {t('aiAnalysis')}
+                      {isDeepAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <BrainCircuit size={14} />}
+                      {isDeepAnalyzing ? 'Analyzing...' : (lang === 'zh' ? '深度分析 & 生成分镜' : 'Deep Analysis & Storyboard')}
+                      {!isDeepAnalyzing && <ArrowRight size={14} className="opacity-60" />}
                   </button>
+                  
+                  <div className="h-4 w-[1px] bg-[#E5E5EA] mx-2" />
+                  
                   <button onClick={() => setShowRightPanel(!showRightPanel)} className="p-1.5 text-[#86868B] hover:text-[#1D1D1F] rounded-md hover:bg-[#F5F5F7]">
                       <Layout size={16}/>
                   </button>
@@ -322,7 +318,6 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack })
           </div>
 
           <div className="flex-1 flex overflow-hidden">
-              {/* Raw Input (Left) */}
               <div className="flex-1 bg-[#F5F5F7] p-8 overflow-y-auto relative custom-scrollbar">
                   <div className="max-w-3xl mx-auto h-full shadow-lg rounded-sm overflow-hidden relative">
                      <textarea
@@ -338,56 +333,11 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack })
                   </div>
               </div>
 
-              {/* Formatted Preview (Right) */}
               <div className={`flex-1 bg-white border-l border-[#E5E5EA] overflow-y-auto p-8 custom-scrollbar ${showRightPanel ? 'block' : 'hidden'}`}>
                   <div className="max-w-2xl mx-auto bg-white min-h-[800px] shadow-apple-card border border-gray-100 p-16 relative">
                       <div className="absolute top-0 right-0 p-4 opacity-20 pointer-events-none"><FileText size={48} /></div>
                       {parsedLines.map((line, idx) => renderScriptLine(line, idx))}
-                      {parsedLines.length === 0 && (
-                          <div className="text-center text-[#86868B] mt-20">
-                              <p>{t('formatPreviewHint')}</p>
-                          </div>
-                      )}
                   </div>
-              </div>
-          </div>
-      </div>
-
-      {/* Right Panel: Analysis & Characters */}
-      <div className={`w-72 bg-white border-l border-[#E5E5EA] flex flex-col transition-all duration-300 ${analyzeMode ? 'mr-0' : '-mr-72'}`}>
-          <div className="p-4 border-b border-[#E5E5EA]">
-              <h3 className="text-xs font-bold text-[#86868B] uppercase tracking-wider flex items-center gap-2">
-                  <Sparkles size={14} className="text-purple-500" /> {t('scriptMindsTitle')}
-              </h3>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-              {renderSentimentChart()}
-
-              <h4 className="text-[10px] font-bold text-[#86868B] uppercase tracking-wider mb-3 flex items-center gap-1">
-                 <User size={12} /> {t('charactersTitle')} ({characters.length})
-              </h4>
-              <div className="space-y-3">
-                  {characters.map(char => (
-                      <div key={char.id} className="p-3 bg-[#F5F5F7] rounded-xl border border-transparent hover:border-purple-200 transition-colors">
-                          <div className="flex items-center justify-between mb-1">
-                              <span className="text-xs font-bold text-[#1D1D1F]" style={{ color: char.color }}>{char.name}</span>
-                              <span className="text-[10px] bg-white px-1.5 rounded text-[#86868B]">{char.dialogueCount} {t('lines')}</span>
-                          </div>
-                          <p className="text-[10px] text-[#86868B] italic leading-tight">"{char.motivation}"</p>
-                      </div>
-                  ))}
-              </div>
-
-              {/* Removed the static Volc Copilot box from here */}
-              <div className="mt-8 p-4 bg-gray-50 rounded-xl border border-gray-100 text-center">
-                  <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3 text-gray-400">
-                    <Minimize2 size={20} />
-                  </div>
-                  <p className="text-[11px] text-[#86868B]">
-                    {lang === 'zh' 
-                        ? '选中编辑器中的文本以唤起 AI 助手' 
-                        : 'Highlight text in editor to summon AI tools'}
-                  </p>
               </div>
           </div>
       </div>
