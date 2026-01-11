@@ -229,12 +229,19 @@ export interface StoryboardShot {
   status?: TaskStatus;
   
   // Reference IDs for Director Console
+  // Legacy fields kept for compatibility, prefer new fields below
   characterIds: string[];
   sceneVisualIds?: string[];
   propIds?: string[];
   
-  // V3.1: Allow user to override the constructed prompt
-  customFullPrompt?: string;
+  // V3.3 Engineering Update: Strict Refs
+  constructedPrompt?: string; // User-editable full prompt override
+  characterRefs: string[];    // Array of Character IDs
+  sceneRef?: string;          // Single Scene Visual ID
+  productRef?: string;        // Single Prop ID
+  
+  // Legacy alias (Deprecated)
+  customFullPrompt?: string; 
 }
 
 export interface ScriptScene {

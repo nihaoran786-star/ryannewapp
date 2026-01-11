@@ -154,7 +154,9 @@ export const generateStoryboardStructure = (scriptText: string): StoryboardData 
              id: `shot-${currentScene.id}-${sceneShotCounter++}`,
              text: line.text,
              promptPreFill: line.text,
-             characterIds: [] 
+             characterIds: [],
+             characterRefs: [],
+             constructedPrompt: ""
          });
       }
     }
@@ -263,8 +265,10 @@ export const performDeepScriptAnalysis = async (
                          id: `shot-${idx}-master`,
                          text: s.summary || "Scene establishing shot",
                          promptPreFill: "Establishing shot",
+                         constructedPrompt: s.visual_prompt || "", 
                          customFullPrompt: s.visual_prompt || "", 
                          characterIds: [],
+                         characterRefs: [],
                          sceneVisualIds: [],
                          propIds: []
                      };

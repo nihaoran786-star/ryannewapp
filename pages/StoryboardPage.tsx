@@ -338,7 +338,8 @@ export const StoryboardPage = () => {
   };
 
   const getEffectivePrompt = (shot: StoryboardShot, scene: StoryboardScene): string => {
-      return shot.customFullPrompt || buildShotPrompt(shot, scene);
+      // Use constructedPrompt if available (user edited), otherwise fallback to customFullPrompt (legacy) or auto-build
+      return shot.constructedPrompt || shot.customFullPrompt || buildShotPrompt(shot, scene);
   };
 
   const updateConstructedPrompt = (sceneId: string, shotId: string, newPrompt: string) => {
@@ -347,54 +348,88 @@ export const StoryboardPage = () => {
           if (scene.id !== sceneId) return scene;
           return {
               ...scene,
-              shots: scene.shots.map(s => s.id === shotId ? { ...s, customFullPrompt: newPrompt } : s)
+              shots: scene.shots.map(s => s.id === shotId ? { ...s, constructedPrompt: newPrompt } : s)
           };
       });
       saveProject({ ...project, storyboard: { ...project.storyboard, scenes: updatedScenes } });
   };
 
+  const AssetSkeleton = () => (
+      <div className="w-40 shrink-0 bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div className="aspect-[3/4] bg-gray-100 animate-pulse" />
+        <div className="p-3 space-y-2">
+           <div className="h-3 bg-gray-100 rounded w-3/4 animate-pulse" />
+           <div className="h-2 bg-gray-100 rounded w-1/2 animate-pulse" />
+        </div>
+      </div>
+  );
+
   const renderAssetCard = (item: any, type: 'char' | 'scene' | 'prop') => (
       <div 
         key={item.id} 
         onClick={() => setEditingItem({ type, data: item })}
-        className="w-40 shrink-0 bg-[#F5F5F7] rounded-xl overflow-hidden flex flex-col group relative border border-gray-200 hover:border-[#007AFF] cursor-pointer transition-all hover:shadow-md"
+        className={`w-40 shrink-0 bg-white rounded-xl overflow-hidden flex flex-col group relative border cursor-pointer transition-all hover:shadow-md
+            ${item.status === 'failed' ? 'border-red-200' : 'border-gray-200 hover:border-[#007AFF]'}`}
       >
-          <div className="aspect-[3/4] bg-gray-200 relative">
+          <div className="aspect-[3/4] bg-gray-50 relative">
               {item.referenceImageUrl ? (
                   <img src={item.referenceImageUrl} className="w-full h-full object-cover" />
               ) : item.status === 'processing' || generatingItems[item.id] ? (
-                  <div className="w-full h-full flex items-center justify-center bg-white">
-                      <Loader2 className="animate-spin text-[#007AFF]" />
+                  <div className="w-full h-full flex items-center justify-center bg-white flex-col gap-2">
+                      <Loader2 className="animate-spin text-[#007AFF]" size={24} />
+                      <span className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">{t('gen')}</span>
                   </div>
+              ) : item.status === 'failed' ? (
+                   <div className="w-full h-full flex flex-col items-center justify-center text-red-400 gap-2 bg-red-50">
+                      <AlertCircle size={24} />
+                      <span className="text-[9px] font-bold uppercase tracking-widest">{t('fail')}</span>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleGenerateAsset(item, type); }}
+                        className="text-[9px] underline hover:text-red-600 mt-1"
+                      >
+                          Retry
+                      </button>
+                   </div>
               ) : (
-                  <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 gap-2 bg-gray-100">
+                  <div className="w-full h-full flex flex-col items-center justify-center text-gray-300 gap-2 bg-gray-50">
                       {type === 'char' && <User size={32} />}
                       {type === 'scene' && <ImageIcon size={32} />}
                       {type === 'prop' && <Box size={32} />}
                   </div>
               )}
               {/* Overlay Actions */}
-              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                  <button className="text-white drop-shadow-md p-2" title="Edit"><Edit3 size={24} /></button>
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100 pointer-events-none">
+                 {/* Only show edit icon if not processing or failed */}
+                 {item.status !== 'processing' && item.status !== 'failed' && (
+                     <div className="bg-white/90 p-2 rounded-full shadow-sm text-[#007AFF]"><Edit3 size={16} /></div>
+                 )}
               </div>
               
               {/* Delete Button */}
               <button 
                 onClick={(e) => { e.stopPropagation(); handleDeleteAsset(item.id, type); }}
-                className="absolute top-2 right-2 p-1.5 bg-black/50 hover:bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all z-20 hover:scale-110"
+                className="absolute top-2 right-2 p-1.5 bg-black/50 hover:bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all z-20 hover:scale-110 pointer-events-auto"
                 title="Delete Asset"
               >
                   <Trash2 size={12} />
               </button>
           </div>
           <div className="p-3">
-              <h3 className="font-bold text-xs text-[#1D1D1F] truncate">{item.name}</h3>
+              <h3 className={`font-bold text-xs truncate ${item.status === 'failed' ? 'text-red-500' : 'text-[#1D1D1F]'}`}>{item.name}</h3>
               <p className="text-[9px] text-gray-400 truncate mt-0.5">{item.visualDescription}</p>
           </div>
       </div>
   );
 
-  if (loading) return <div className="h-full flex items-center justify-center"><Loader2 className="animate-spin text-gray-400" size={32} /></div>;
+  if (loading) return (
+      <div className="h-full flex flex-col gap-6 p-8">
+          <div className="h-10 w-full bg-gray-100 rounded-lg animate-pulse" />
+          <div className="flex gap-4">
+               {[1,2,3].map(i => <AssetSkeleton key={i} />)}
+          </div>
+      </div>
+  );
+  
   if (!project) return null;
 
   return (
@@ -450,6 +485,28 @@ export const StoryboardPage = () => {
 
       <div className="flex-1 overflow-y-auto custom-scrollbar p-8">
           
+          {/* Script Summary Section (New) */}
+          {(project.synopsis || project.logline) && (
+              <div className="bg-white p-6 rounded-[24px] shadow-sm border border-gray-100 mb-8 animate-in fade-in slide-in-from-top-4">
+                  <div className="flex items-center gap-2 mb-3">
+                      <FileText size={16} className="text-[#007AFF]" />
+                      <h2 className="text-xs font-bold text-[#86868B] uppercase tracking-wider">
+                          {lang === 'zh' ? '剧情简介 (SYNOPSIS)' : 'SCRIPT SYNOPSIS'}
+                      </h2>
+                  </div>
+                  <p className="text-sm font-medium text-[#1D1D1F] leading-relaxed max-w-4xl">
+                      {project.synopsis || project.logline}
+                  </p>
+                  {project.genre && (
+                      <div className="flex gap-2 mt-4">
+                          {project.genre.map((g, i) => (
+                              <span key={i} className="px-2 py-1 bg-gray-50 border border-gray-100 rounded-md text-[10px] font-bold text-gray-500 uppercase tracking-wide">{g}</span>
+                          ))}
+                      </div>
+                  )}
+              </div>
+          )}
+
           {/* Asset Management Section */}
           <section className="mb-10 space-y-8">
               {/* Characters */}
@@ -466,10 +523,13 @@ export const StoryboardPage = () => {
                         <Plus size={14} />
                      </button>
                   </div>
-                  <div className="flex gap-4 overflow-x-auto pb-4 custom-scrollbar-h">
+                  <div className="flex gap-4 overflow-x-auto pb-4 custom-scrollbar-h min-h-[180px]">
                       {project.storyboard?.characters.map(item => renderAssetCard(item, 'char'))}
                       {(!project.storyboard?.characters || project.storyboard.characters.length === 0) && (
-                          <div className="text-gray-400 text-xs italic p-4">No characters detected.</div>
+                          <div className="text-gray-300 text-xs italic p-4 flex flex-col items-center justify-center w-full">
+                              <span>No characters detected.</span>
+                              <span className="text-[10px] mt-1">Run "Deep Analysis" in Script Editor first.</span>
+                          </div>
                       )}
                   </div>
               </div>
@@ -477,7 +537,7 @@ export const StoryboardPage = () => {
               {/* Scenes & Props Container */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Environment Visuals */}
-                  <div className="bg-white p-6 rounded-[24px] shadow-sm border border-gray-100">
+                  <div className="bg-white p-6 rounded-[24px] shadow-sm border border-gray-100 flex flex-col h-full">
                       <div className="flex items-center justify-between mb-6">
                          <h2 className="text-xs font-bold text-[#86868B] uppercase tracking-wider flex items-center gap-2">
                             <ImageIcon size={14} /> {lang === 'zh' ? '场景生图 (SCENES)' : 'ENVIRONMENTS'}
@@ -490,16 +550,16 @@ export const StoryboardPage = () => {
                             <Plus size={14} />
                          </button>
                       </div>
-                      <div className="flex gap-4 overflow-x-auto pb-4 custom-scrollbar-h">
+                      <div className="flex gap-4 overflow-x-auto pb-4 custom-scrollbar-h flex-1 min-h-[180px] items-start">
                           {project.storyboard?.sceneVisuals?.map(item => renderAssetCard(item, 'scene'))}
                           {(!project.storyboard?.sceneVisuals || project.storyboard.sceneVisuals.length === 0) && (
-                              <div className="text-gray-400 text-xs italic p-4">No distinct scenes detected.</div>
+                              <div className="text-gray-300 text-xs italic p-4 w-full text-center">No distinct scenes detected.</div>
                           )}
                       </div>
                   </div>
 
                   {/* Props */}
-                  <div className="bg-white p-6 rounded-[24px] shadow-sm border border-gray-100">
+                  <div className="bg-white p-6 rounded-[24px] shadow-sm border border-gray-100 flex flex-col h-full">
                       <div className="flex items-center justify-between mb-6">
                          <h2 className="text-xs font-bold text-[#86868B] uppercase tracking-wider flex items-center gap-2">
                             <Box size={14} /> {lang === 'zh' ? '产品/道具生图 (PROPS)' : 'PROPS & PRODUCTS'}
@@ -512,10 +572,10 @@ export const StoryboardPage = () => {
                             <Plus size={14} />
                          </button>
                       </div>
-                      <div className="flex gap-4 overflow-x-auto pb-4 custom-scrollbar-h">
+                      <div className="flex gap-4 overflow-x-auto pb-4 custom-scrollbar-h flex-1 min-h-[180px] items-start">
                           {project.storyboard?.props?.map(item => renderAssetCard(item, 'prop'))}
                           {(!project.storyboard?.props || project.storyboard.props.length === 0) && (
-                              <div className="text-gray-400 text-xs italic p-4">No key props detected.</div>
+                              <div className="text-gray-300 text-xs italic p-4 w-full text-center">No key props detected.</div>
                           )}
                       </div>
                   </div>
