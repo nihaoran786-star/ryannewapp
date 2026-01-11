@@ -164,51 +164,51 @@ export const PROMPTS = {
     FORMAT: "You are a script formatter. Fix the following text to adhere to standard screenplay format (Fountain syntax). Ensure Scene Headers are uppercase INT./EXT., Character names are uppercase, and dialogue is properly separated.",
     
     // Stage 1: Macro
-    ANALYSIS_STAGE_1: `Role: Experienced Film Planner.
-Task: Analyze the script.
+    ANALYSIS_STAGE_1: `Role: Film Planner.
+Task: Analyze script.
 Output JSON ONLY:
 {
-  "title": "Script Title",
-  "genre": ["Genre1", "Genre2"],
-  "logline": "One sentence summary including protagonist, conflict, and resolution.",
-  "synopsis": "Detailed story outline (approx 300 words)."
+  "title": "Title",
+  "genre": ["Genre"],
+  "logline": "Summary",
+  "synopsis": "Outline"
 }`,
 
     // Stage 2: Structure & Visuals
-    ANALYSIS_STAGE_2: `Role: Casting Director & Storyboard Artist.
-Task: Breakdown script into scenes and characters. Also identify key props and distinct environment settings for asset generation.
+    ANALYSIS_STAGE_2: `Role: Director.
+Task: Breakdown script.
 Output JSON ONLY:
 {
   "characters": [
-    { "name": "Name", "bio": "Short bio", "tags": ["Trait1", "Trait2"] }
+    { "name": "Name", "bio": "Bio", "tags": ["Trait"] }
   ],
   "environment_visuals": [
-    { "name": "Location Name", "description": "Visual description of the setting (lighting, style, era) without characters." }
+    { "name": "Loc", "description": "Visuals" }
   ],
   "props": [
-    { "name": "Item Name", "description": "Visual description of the object." }
+    { "name": "Item", "description": "Visuals" }
   ],
   "scenes": [
     {
-      "scene_id": number (1-based index),
-      "header": "INT. LOCATION - DAY",
-      "summary": "Brief summary",
-      "characters_present": ["Name1"],
-      "visual_prompt": "Cinematic shot, lighting style, camera angle, action description, 8k, photorealistic..."
+      "scene_id": 1,
+      "header": "INT. LOC",
+      "summary": "Summary",
+      "characters_present": ["Name"],
+      "visual_prompt": "Prompt"
     }
   ]
 }`,
 
     // Stage 3: Deep QC
-    ANALYSIS_STAGE_3: `Role: Data Analyst & Script Doctor.
-Task: Analyze sentiment and logic.
+    ANALYSIS_STAGE_3: `Role: Analyst.
+Task: Analyze script.
 Output JSON ONLY:
 {
   "analytics": [
-    { "scene_id": number, "emotion_score": number (-1.0 to 1.0), "pacing": "Fast" | "Normal" | "Slow" }
+    { "scene_id": 1, "emotion_score": 0.5, "pacing": "Normal" }
   ],
   "logic_issues": [
-    { "scene_ref": [number], "issue_description": "Description of contradiction or plot hole", "severity": "Low" | "Medium" | "High" }
+    { "scene_ref": [1], "issue_description": "Issue", "severity": "Medium" }
   ]
 }`
 };

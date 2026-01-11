@@ -175,14 +175,35 @@ export const generateStoryboardStructure = (scriptText: string): StoryboardData 
 };
 
 /**
- * Helper to safely parse JSON from LLM output (which might have markdown backticks)
+ * Helper to safely parse JSON from LLM output (which might have markdown backticks or extra text)
  */
 const safeParseJSON = (str: string) => {
     try {
-        const jsonStr = str.replace(/```json/g, '').replace(/```/g, '').trim();
-        return JSON.parse(jsonStr);
+        // 1. Try to find the JSON block inside markdown code fences
+        const codeBlockMatch = str.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+        let candidate = codeBlockMatch ? codeBlockMatch[1] : str;
+        
+        // 2. Cleanup common issues
+        candidate = candidate.trim();
+        
+        // 3. Attempt parse
+        return JSON.parse(candidate);
     } catch (e) {
-        console.error("JSON Parse Error:", e, str);
+        // 4. Fallback: Aggressively search for outermost curly braces if standard parsing fails
+        // This handles cases where the LLM puts text before/after the JSON without code blocks
+        try {
+            const firstOpen = str.indexOf('{');
+            const lastClose = str.lastIndexOf('}');
+            if (firstOpen !== -1 && lastClose !== -1 && lastClose > firstOpen) {
+                const jsonSubstring = str.substring(firstOpen, lastClose + 1);
+                return JSON.parse(jsonSubstring);
+            }
+        } catch (e2) {
+            console.error("Deep JSON extraction failed:", e2);
+        }
+        
+        console.error("JSON Parse Error:", e);
+        // Return null instead of throwing to allow the app to degrade gracefully
         return null;
     }
 };
@@ -220,6 +241,7 @@ export const performDeepScriptAnalysis = async (
 
         // --- STAGE 2: STRUCTURE & VISUALS (Director) ---
         onProgress?.(2, "Structural Visual Extraction...");
+        // This stage can produce very large JSON, ensured by updated global maxTokens settings
         const stage2Res = await callVolcChatApi(volcSettings, PROMPTS.ANALYSIS_STAGE_2, scriptText.slice(0, 15000));
         const stage2Data = safeParseJSON(stage2Res);
 

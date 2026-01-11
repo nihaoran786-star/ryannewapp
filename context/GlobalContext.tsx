@@ -1,4 +1,5 @@
 
+
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { Channel, VolcSettings } from '../types';
 
@@ -242,7 +243,7 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [showSettings, setShowSettings] = useState(false);
   const [volcSettings, setVolcSettings] = useState<VolcSettings>(() => {
       const saved = localStorage.getItem('sora_volc_settings');
-      return saved ? JSON.parse(saved) : { apiKey: '', model: '', maxTokens: 2048 };
+      return saved ? JSON.parse(saved) : { apiKey: '', model: '', maxTokens: 8192 };
   });
 
   const t = (key: keyof typeof locales['zh']) => locales[lang][key] || key;
