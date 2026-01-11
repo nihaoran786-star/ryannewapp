@@ -70,7 +70,7 @@ export const ProjectsPage = () => {
     
     setIsCreateModalOpen(false);
     // Navigate immediately to the new project
-    navigate(`/script/${newProj.id}`);
+    navigate(`/project/${newProj.id}/script`);
   };
 
   const filteredProjects = projects.filter(p => 
@@ -156,7 +156,7 @@ export const ProjectsPage = () => {
                 {filteredProjects.map(project => (
                 <div 
                     key={project.id}
-                    onClick={() => navigate(`/script/${project.id}`)}
+                    onClick={() => navigate(`/project/${project.id}/script`)}
                     className="group bg-white rounded-[24px] p-6 shadow-apple-card hover:shadow-apple-hover border border-[rgba(0,0,0,0.05)] cursor-pointer transition-all duration-300 relative overflow-hidden hover:-translate-y-1 min-h-[220px] flex flex-col"
                 >
                     <div className="flex items-center gap-4 mb-4">
@@ -185,19 +185,27 @@ export const ProjectsPage = () => {
                       {project.content ? project.content.slice(0, 100) : (lang === 'zh' ? '暂无内容...' : 'No content...')}
                     </p>
 
-                    <div className="flex gap-2 mt-auto">
+                    <div className="grid grid-cols-3 gap-2 mt-auto">
                         <button 
-                            onClick={(e) => { e.stopPropagation(); navigate(`/script/${project.id}`); }}
-                            className="flex-1 py-2 rounded-lg bg-[#F5F5F7] text-xs font-bold text-[#86868B] hover:text-[#1D1D1F] hover:bg-[#E5E5EA] transition-all"
+                            onClick={(e) => { e.stopPropagation(); navigate(`/project/${project.id}/script`); }}
+                            className="py-2 rounded-lg bg-[#F5F5F7] text-xs font-bold text-[#86868B] hover:text-[#1D1D1F] hover:bg-[#E5E5EA] transition-all flex items-center justify-center gap-1"
                         >
-                            {lang === 'zh' ? '编辑剧本' : 'Edit Script'}
+                            <FileText size={12} />
+                            {lang === 'zh' ? '剧本台' : 'Script'}
                         </button>
                         <button 
-                            onClick={(e) => { e.stopPropagation(); navigate(`/projects/${project.id}/storyboard`); }}
-                            className="flex-1 py-2 rounded-lg bg-[#007AFF]/10 text-xs font-bold text-[#007AFF] hover:bg-[#007AFF] hover:text-white transition-all flex items-center justify-center gap-1"
+                            onClick={(e) => { e.stopPropagation(); navigate(`/project/${project.id}/storyboard`); }}
+                            className="py-2 rounded-lg bg-[#007AFF]/10 text-xs font-bold text-[#007AFF] hover:bg-[#007AFF] hover:text-white transition-all flex items-center justify-center gap-1"
                         >
                             <LayoutTemplate size={12} />
                             {lang === 'zh' ? '分镜台' : 'Storyboard'}
+                        </button>
+                         <button 
+                            onClick={(e) => { e.stopPropagation(); navigate(`/project/${project.id}/director`); }}
+                            className="py-2 rounded-lg bg-[#F5F5F7] text-xs font-bold text-[#86868B] hover:text-[#1D1D1F] hover:bg-[#E5E5EA] transition-all flex items-center justify-center gap-1"
+                        >
+                            <Clapperboard size={12} />
+                            {lang === 'zh' ? '导演台' : 'Director'}
                         </button>
                     </div>
                 </div>

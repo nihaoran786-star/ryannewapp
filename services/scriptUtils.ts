@@ -1,6 +1,7 @@
 
-import { ScriptLine, ScriptLineType, ScriptScene, ScriptCharacter, StoryboardData, StoryboardScene, StoryboardShot, StoryboardCharacter, VolcSettings } from '../types';
-import { callVolcChatApi } from './volcEngineService';
+
+import { ScriptLine, ScriptLineType, ScriptScene, ScriptCharacter, StoryboardData, StoryboardScene, StoryboardShot, StoryboardCharacter, VolcSettings, ScriptProject, LogicIssue, StoryboardProp, StoryboardSceneVisual } from '../types';
+import { callVolcChatApi, PROMPTS } from './volcEngineService';
 
 // Simple colors for character highlighting
 const CHAR_COLORS = [
@@ -163,73 +164,156 @@ export const generateStoryboardStructure = (scriptText: string): StoryboardData 
 
   return {
     characters: sbCharacters,
+    sceneVisuals: [],
+    props: [],
     scenes: sbScenes,
-    lastUpdated: Date.now()
+    lastUpdated: Date.now(),
+    globalStyle: 'Cinematic, Photorealistic, 8k, Film Grain' // Default style
   };
 };
 
 /**
- * PHASE 1: Deep Script Analysis
- * Uses Volc Engine (if configured) to semantically enrich the storyboard data.
+ * Helper to safely parse JSON from LLM output (which might have markdown backticks)
+ */
+const safeParseJSON = (str: string) => {
+    try {
+        const jsonStr = str.replace(/```json/g, '').replace(/```/g, '').trim();
+        return JSON.parse(jsonStr);
+    } catch (e) {
+        console.error("JSON Parse Error:", e, str);
+        return null;
+    }
+};
+
+/**
+ * PHASE 1-3: Multi-Stage Deep Script Analysis
+ * Uses Volc Engine to perform Macro, Structural, and QC analysis.
  */
 export const performDeepScriptAnalysis = async (
     scriptText: string, 
-    volcSettings?: VolcSettings
-): Promise<StoryboardData> => {
-    // 1. Generate skeleton structure
-    const baseData = generateStoryboardStructure(scriptText);
+    volcSettings: VolcSettings,
+    onProgress?: (stage: number, message: string) => void
+): Promise<{ projectUpdates: Partial<ScriptProject>, storyboard: StoryboardData }> => {
     
-    // If no AI configured, return skeleton
+    const baseData = generateStoryboardStructure(scriptText);
+    const resultProject: Partial<ScriptProject> = {};
+    let finalStoryboard = { ...baseData };
+
     if (!volcSettings || !volcSettings.apiKey) {
-        return baseData;
+        return { projectUpdates: {}, storyboard: baseData };
     }
 
     try {
-        // 2. AI Character Analysis (Extraction of Visual Traits)
-        const charNames = baseData.characters.map(c => c.name);
-        if (charNames.length > 0) {
-             const charSystemPrompt = "You are a Casting Director. Extract detailed visual descriptions for the characters. Output STRICT JSON: {\"CharacterName\": \"Visual Description (Age, Clothes, Face, Vibe)\"}.";
-             const charUserPrompt = `Characters: ${charNames.join(', ')}.\n\nScript Segment:\n${scriptText.slice(0, 3500)}`;
-             
-             const charRes = await callVolcChatApi(volcSettings, charSystemPrompt, charUserPrompt);
-             
-             try {
-                 const jsonStr = charRes.replace(/```json/g, '').replace(/```/g, '').trim();
-                 const visualMap = JSON.parse(jsonStr);
-                 
-                 baseData.characters = baseData.characters.map(c => ({
-                     ...c,
-                     visualDescription: visualMap[c.name] 
-                        ? `${visualMap[c.name]}, cinematic, 8k, detailed` 
-                        : c.visualDescription
-                 }));
-             } catch (e) { console.warn("Character JSON parse failed", e); }
+        // --- STAGE 1: MACRO ANALYSIS (Planner) ---
+        onProgress?.(1, "Macro Analysis (Genre, Logline)...");
+        const stage1Res = await callVolcChatApi(volcSettings, PROMPTS.ANALYSIS_STAGE_1, scriptText.slice(0, 10000));
+        const stage1Data = safeParseJSON(stage1Res);
+        
+        if (stage1Data) {
+            resultProject.title = stage1Data.title || undefined;
+            resultProject.genre = stage1Data.genre || [];
+            resultProject.logline = stage1Data.logline || "";
+            resultProject.synopsis = stage1Data.synopsis || "";
         }
 
-        // 3. AI Scene Analysis (Atmosphere Extraction)
-        if (baseData.scenes.length > 0) {
-            const sceneHeaders = baseData.scenes.map(s => s.header).join('\n');
-            const sceneSystemPrompt = "You are a Cinematographer. Define the visual atmosphere/lighting for these scenes. Output STRICT JSON: {\"SCENE HEADER\": \"Atmosphere Keywords (e.g. Dark, Neon, Foggy, Warm)\"}.";
-            
-            const sceneRes = await callVolcChatApi(volcSettings, sceneSystemPrompt, `Scenes:\n${sceneHeaders}\n\nContext:\n${scriptText.slice(0, 2000)}`);
-            
-            try {
-                const jsonStr = sceneRes.replace(/```json/g, '').replace(/```/g, '').trim();
-                const moodMap = JSON.parse(jsonStr);
-                
-                baseData.scenes = baseData.scenes.map(s => ({
-                    ...s,
-                    atmosphere: moodMap[s.header] || s.atmosphere
+        // --- STAGE 2: STRUCTURE & VISUALS (Director) ---
+        onProgress?.(2, "Structural Visual Extraction...");
+        const stage2Res = await callVolcChatApi(volcSettings, PROMPTS.ANALYSIS_STAGE_2, scriptText.slice(0, 15000));
+        const stage2Data = safeParseJSON(stage2Res);
+
+        if (stage2Data) {
+            // Update Characters
+            if (stage2Data.characters && Array.isArray(stage2Data.characters)) {
+                const newChars: StoryboardCharacter[] = stage2Data.characters.map((c: any) => ({
+                    id: `char-${c.name.replace(/\s+/g, '_')}`,
+                    name: c.name,
+                    visualDescription: c.bio ? `${c.name}, ${c.bio}, ${c.tags?.join(', ')}, cinematic` : `${c.name}, cinematic character`,
+                    status: 'queued'
                 }));
-            } catch (e) { console.warn("Scene JSON parse failed", e); }
+                finalStoryboard.characters = newChars;
+            }
+
+            // Update Props
+            if (stage2Data.props && Array.isArray(stage2Data.props)) {
+                const newProps: StoryboardProp[] = stage2Data.props.map((p: any, idx: number) => ({
+                    id: `prop-${idx}-${p.name.replace(/\s+/g, '_')}`,
+                    name: p.name,
+                    visualDescription: p.description || `${p.name}, product shot, cinematic lighting`,
+                    status: 'queued'
+                }));
+                finalStoryboard.props = newProps;
+            }
+
+            // Update Scene Visuals
+            if (stage2Data.environment_visuals && Array.isArray(stage2Data.environment_visuals)) {
+                 const newSceneVisuals: StoryboardSceneVisual[] = stage2Data.environment_visuals.map((e: any, idx: number) => ({
+                     id: `sv-${idx}-${e.name.replace(/\s+/g, '_')}`,
+                     name: e.name,
+                     visualDescription: e.description || `${e.name}, establishing shot, no people`,
+                     status: 'queued'
+                 }));
+                 finalStoryboard.sceneVisuals = newSceneVisuals;
+            }
+
+            // Update Scenes & Shots
+            if (stage2Data.scenes && Array.isArray(stage2Data.scenes)) {
+                 const newScenes: StoryboardScene[] = stage2Data.scenes.map((s: any, idx: number) => {
+                     // Create a KEY MASTER SHOT from the visual_prompt
+                     const masterShot: StoryboardShot = {
+                         id: `shot-${idx}-master`,
+                         text: s.summary || "Scene establishing shot",
+                         promptPreFill: "Establishing shot",
+                         customFullPrompt: s.visual_prompt || "", 
+                         characterIds: [],
+                         sceneVisualIds: [],
+                         propIds: []
+                     };
+                     
+                     return {
+                         id: `scene-${s.scene_id || idx}`,
+                         number: s.scene_id || (idx + 1),
+                         header: s.header || `SCENE ${idx+1}`,
+                         atmosphere: s.visual_prompt ? s.visual_prompt.split(',').slice(0,3).join(',') : "Cinematic",
+                         shots: [masterShot]
+                     };
+                 });
+                 finalStoryboard.scenes = newScenes;
+            }
+        }
+
+        // --- STAGE 3: DEEP QC (Analyst) ---
+        onProgress?.(3, "Deep QC & Logic Check...");
+        const stage3Res = await callVolcChatApi(volcSettings, PROMPTS.ANALYSIS_STAGE_3, scriptText.slice(0, 15000));
+        const stage3Data = safeParseJSON(stage3Res);
+
+        if (stage3Data) {
+            // Merge Analytics into Scenes
+            if (stage3Data.analytics && Array.isArray(stage3Data.analytics)) {
+                const scriptScenesUpdate: ScriptScene[] = extractScenes(parseScript(scriptText)).map((s, idx) => {
+                    const analysis = stage3Data.analytics.find((a: any) => a.scene_id === s.number || a.scene_id === (idx + 1));
+                    return {
+                        ...s,
+                        sentiment: analysis ? analysis.emotion_score : 0,
+                        pacing: analysis ? analysis.pacing : undefined
+                    };
+                });
+                resultProject.scenes = scriptScenesUpdate;
+            }
+
+            // Store Logic Issues
+            if (stage3Data.logic_issues) {
+                resultProject.logicIssues = stage3Data.logic_issues as LogicIssue[];
+            }
         }
 
     } catch (error) {
-        console.error("Deep Analysis Failed:", error);
-        // Fail gracefully, return base data
+        console.error("Deep Analysis Pipeline Failed:", error);
     }
 
-    return baseData;
+    return { 
+        projectUpdates: resultProject, 
+        storyboard: finalStoryboard 
+    };
 };
 
 export const MOCK_INITIAL_SCRIPT = `INT. COFFEE SHOP - DAY

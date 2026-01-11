@@ -1,12 +1,14 @@
 
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   FileText, Plus, Save, Upload, PenTool, Layout, 
   BarChart, Mic, ChevronRight, ChevronLeft, Search, 
   Sparkles, MoreHorizontal, User, BookOpen, Loader2,
-  X, Wand2, AlignLeft, Scissors, Minimize2, BrainCircuit, ArrowRight
+  X, Wand2, AlignLeft, Scissors, Minimize2, BrainCircuit, ArrowRight,
+  AlertTriangle, CheckCircle2, Film, Lightbulb, LayoutTemplate
 } from 'lucide-react';
-import { ScriptProject, ScriptScene, ScriptCharacter, ScriptLine } from '../types';
+import { ScriptProject, ScriptScene, ScriptCharacter, ScriptLine, LogicIssue } from '../types';
 import { parseScript, extractScenes, extractCharacters, performDeepScriptAnalysis } from '../services/scriptUtils';
 import { useGlobal } from '../context/GlobalContext';
 import { callVolcChatApi, PROMPTS } from '../services/volcEngineService';
@@ -33,6 +35,9 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack })
   const [analyzeMode, setAnalyzeMode] = useState(false);
   const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [isDeepAnalyzing, setIsDeepAnalyzing] = useState(false);
+  const [analysisStep, setAnalysisStep] = useState(0); // 0=Idle, 1=Macro, 2=Structure, 3=QC
+  const [analysisMsg, setAnalysisMsg] = useState('');
+  const [hasAnalyzed, setHasAnalyzed] = useState(false);
 
   // Floating Toolbar State
   const [toolbarPosition, setToolbarPosition] = useState<{top: number, left: number} | null>(null);
@@ -58,6 +63,10 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack })
       if (activeProject) {
           setEditorContent(activeProject.content);
           setProjectTitle(activeProject.title);
+          // Check if analysis data exists to enable the storyboard button
+          if (activeProject.genre && activeProject.genre.length > 0) {
+              setHasAnalyzed(true);
+          }
       }
   }, [activeProject]);
 
@@ -104,35 +113,53 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack })
       if (textareaRef.current) textareaRef.current.scrollTop = index * 24; 
   };
 
-  // Phase 1: Deep Analysis Trigger
+  // Phase 1: Deep Analysis Only (Stays on Page)
   const handleDeepAnalysis = async () => {
     if (!projectId) return;
     setIsDeepAnalyzing(true);
+    setAnalysisStep(1);
     
-    // Save current content first
     const updatedProjects = projects.map(p => 
         p.id === projectId ? { ...p, content: editorContent, title: projectTitle } : p
     );
     localStorage.setItem('sora_script_projects', JSON.stringify(updatedProjects));
 
     try {
-        // Perform Analysis (Regex + Volc AI)
-        const storyboardData = await performDeepScriptAnalysis(editorContent, volcSettings);
+        const { projectUpdates, storyboard } = await performDeepScriptAnalysis(
+            editorContent, 
+            volcSettings, 
+            (stage, msg) => {
+                setAnalysisStep(stage);
+                setAnalysisMsg(msg);
+            }
+        );
         
-        // Save Storyboard Data
         const finalProjects = updatedProjects.map(p => 
-            p.id === projectId ? { ...p, storyboard: storyboardData } : p
+            p.id === projectId ? { ...p, ...projectUpdates, storyboard } : p
         );
         localStorage.setItem('sora_script_projects', JSON.stringify(finalProjects));
         setProjects(finalProjects);
 
-        // Transition to Phase 2
-        navigate(`/projects/${projectId}/storyboard`);
+        setAnalysisStep(4);
+        setAnalysisMsg("Analysis Complete!");
+        setHasAnalyzed(true);
+        setShowRightPanel(true); // Auto-open the analysis panel
+
+        setTimeout(() => {
+            setIsDeepAnalyzing(false);
+            setAnalysisStep(0);
+        }, 1500);
+
     } catch (e) {
         alert("Analysis failed. Please check your settings.");
-    } finally {
         setIsDeepAnalyzing(false);
+        setAnalysisStep(0);
     }
+  };
+
+  // Navigation to Storyboard
+  const handleGoToStoryboard = () => {
+      navigate(`/project/${projectId}/storyboard`);
   };
 
   const handleAIAction = async (action: 'EXPAND' | 'SHORTEN' | 'FORMAT') => {
@@ -159,34 +186,88 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack })
     }
   };
 
-  const renderSentimentChart = () => {
-      if (scenes.length < 2) return null;
-      const height = 60;
-      const width = 240;
-      const points = scenes.map((s, i) => {
-          const x = (i / (scenes.length - 1)) * width;
-          const y = (height / 2) - (s.sentiment * (height / 2)); 
-          return `${x},${y}`;
-      }).join(' ');
-
+  const renderAnalysisPanel = () => {
+      if (!activeProject) return null;
       return (
-          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 mb-6">
-              <div className="flex items-center justify-between mb-2">
-                  <h4 className="text-[10px] font-bold text-[#86868B] uppercase tracking-wider flex items-center gap-1">
-                      <BarChart size={12} /> {t('emotionalArc')}
-                  </h4>
-              </div>
-              <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} className="overflow-visible">
-                  <defs>
-                      <linearGradient id="gradient" x1="0" x2="0" y1="0" y2="1">
-                          <stop offset="0%" stopColor="#007AFF" stopOpacity="0.5"/>
-                          <stop offset="100%" stopColor="#007AFF" stopOpacity="0"/>
-                      </linearGradient>
-                  </defs>
-                  <path d={`M 0 ${height/2} L ${width} ${height/2}`} stroke="#E5E5EA" strokeWidth="1" strokeDasharray="4 2" />
-                  <polyline points={points} fill="none" stroke="#007AFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d={`M 0 ${height} L ${points} L ${width} ${height} Z`} fill="url(#gradient)" opacity="0.2" />
-              </svg>
+          <div className="space-y-6">
+              {/* Report Header */}
+              {activeProject.genre && activeProject.genre.length > 0 && (
+                  <div className="bg-gradient-to-r from-purple-50 to-white p-4 rounded-xl border border-purple-100">
+                      <div className="flex items-center gap-2 mb-2">
+                          <Film size={14} className="text-purple-600" />
+                          <span className="text-[10px] font-bold text-purple-600 uppercase tracking-widest">{lang === 'zh' ? '类型与题材' : 'GENRE'}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                          {activeProject.genre.map((g, i) => (
+                              <span key={i} className="bg-white px-2 py-1 rounded-md text-xs font-bold text-[#1D1D1F] shadow-sm border border-purple-100">{g}</span>
+                          ))}
+                      </div>
+                      {activeProject.logline && (
+                          <p className="mt-3 text-xs text-gray-600 italic leading-relaxed">
+                              "{activeProject.logline}"
+                          </p>
+                      )}
+                  </div>
+              )}
+
+              {/* Logic Issues */}
+              {activeProject.logicIssues && activeProject.logicIssues.length > 0 && (
+                  <div className="bg-red-50/50 p-4 rounded-xl border border-red-100">
+                       <div className="flex items-center gap-2 mb-3">
+                          <AlertTriangle size={14} className="text-red-500" />
+                          <span className="text-[10px] font-bold text-red-500 uppercase tracking-widest">{lang === 'zh' ? '逻辑与一致性' : 'LOGIC ISSUES'}</span>
+                      </div>
+                      <div className="space-y-3">
+                          {activeProject.logicIssues.map((issue, idx) => (
+                              <div key={idx} className="bg-white p-3 rounded-lg border border-red-100 shadow-sm flex gap-3">
+                                  <div className={`w-1.5 h-full rounded-full shrink-0 ${issue.severity === 'High' ? 'bg-red-500' : 'bg-orange-400'}`} />
+                                  <div>
+                                      <p className="text-xs font-medium text-[#1D1D1F] leading-snug">{issue.issue_description}</p>
+                                      {issue.scene_refs && (
+                                          <div className="mt-1.5 flex gap-1">
+                                              {issue.scene_refs.map(r => (
+                                                  <span key={r} className="text-[9px] font-mono bg-red-50 text-red-600 px-1.5 rounded">Sc.{r}</span>
+                                              ))}
+                                          </div>
+                                      )}
+                                  </div>
+                              </div>
+                          ))}
+                      </div>
+                  </div>
+              )}
+
+              {/* Sentiment Chart */}
+              {(activeProject.scenes && activeProject.scenes.length > 1) && (
+                <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+                    <div className="flex items-center justify-between mb-2">
+                        <h4 className="text-[10px] font-bold text-[#86868B] uppercase tracking-wider flex items-center gap-1">
+                            <BarChart size={12} /> {t('emotionalArc')}
+                        </h4>
+                    </div>
+                    {/* Simple SVG Chart */}
+                    <svg width="100%" height="60" className="overflow-visible">
+                        <path d={`M 0 30 L 100% 30`} stroke="#E5E5EA" strokeWidth="1" strokeDasharray="4 2" />
+                        <polyline 
+                            points={activeProject.scenes.map((s, i) => {
+                                const x = (i / (activeProject.scenes!.length - 1)) * 240; 
+                                const y = 30 - ((s.sentiment || 0) * 25); 
+                                return `${x},${y}`;
+                            }).join(' ')} 
+                            fill="none" 
+                            stroke="#007AFF" 
+                            strokeWidth="2" 
+                            strokeLinecap="round" 
+                            strokeLinejoin="round" 
+                            vectorEffect="non-scaling-stroke"
+                        />
+                    </svg>
+                    <div className="flex justify-between text-[9px] text-gray-400 mt-1 font-mono">
+                        <span>Start</span>
+                        <span>End</span>
+                    </div>
+                </div>
+              )}
           </div>
       );
   };
@@ -251,7 +332,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack })
         </div>
       )}
 
-      {/* Left Panel */}
+      {/* Left Panel: Scene Navigator */}
       <div className={`transition-all duration-300 ease-in-out border-r border-[#E5E5EA] bg-white flex flex-col ${showLeftPanel ? 'w-64' : 'w-0 overflow-hidden opacity-0'}`}>
           <div className="p-4 border-b border-[#E5E5EA]">
               <h3 className="text-xs font-bold text-[#86868B] uppercase tracking-wider mb-2">{t('scenes')} ({scenes.length})</h3>
@@ -269,6 +350,11 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack })
                               <span className="text-xs font-bold text-[#1D1D1F] truncate">{scene.header}</span>
                           </div>
                           <p className="text-[10px] text-[#86868B] line-clamp-2 leading-tight group-hover:text-[#1D1D1F] transition-colors">
+                              {activeProject?.scenes?.find(s => s.number === scene.number)?.pacing && (
+                                  <span className="mr-1 text-[#007AFF] font-mono">
+                                      [{activeProject.scenes.find(s => s.number === scene.number)?.pacing}]
+                                  </span>
+                              )}
                               {scene.logline}
                           </p>
                       </div>
@@ -299,14 +385,45 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack })
                   />
               </div>
               <div className="flex items-center gap-2">
+                  
+                  {/* Button 1: Deep Analysis */}
                   <button 
                      onClick={handleDeepAnalysis}
                      disabled={isDeepAnalyzing}
-                     className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm ${isDeepAnalyzing ? 'bg-gray-100 text-gray-400' : 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white hover:shadow-purple-500/20 active:scale-95'}`}
+                     className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm 
+                        ${isDeepAnalyzing 
+                            ? 'bg-gray-100 text-gray-500 w-48 justify-center cursor-wait' 
+                            : 'bg-white hover:bg-gray-50 text-[#1D1D1F] border border-gray-200'}`}
                   >
-                      {isDeepAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <BrainCircuit size={14} />}
-                      {isDeepAnalyzing ? 'Analyzing...' : (lang === 'zh' ? '深度分析 & 生成分镜' : 'Deep Analysis & Storyboard')}
-                      {!isDeepAnalyzing && <ArrowRight size={14} className="opacity-60" />}
+                      {isDeepAnalyzing ? (
+                          <>
+                            <Loader2 size={14} className="animate-spin" />
+                            <span>
+                                {analysisStep === 1 ? '1/3 Macro...' : 
+                                 analysisStep === 2 ? '2/3 Structure...' : 
+                                 analysisStep === 3 ? '3/3 Deep QC...' : 'Finishing...'}
+                            </span>
+                          </>
+                      ) : (
+                          <>
+                             <BrainCircuit size={14} className="text-purple-600" />
+                             {lang === 'zh' ? '深度分析' : 'Deep Analysis'}
+                          </>
+                      )}
+                  </button>
+
+                  {/* Button 2: Generate Storyboard (Navigates) */}
+                  <button 
+                    onClick={handleGoToStoryboard}
+                    disabled={isDeepAnalyzing}
+                    className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm 
+                        ${!hasAnalyzed 
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                            : 'bg-gradient-to-r from-[#007AFF] to-blue-600 text-white hover:shadow-blue-500/30 active:scale-95'}`}
+                  >
+                      <LayoutTemplate size={14} />
+                      {lang === 'zh' ? '生成分镜' : 'Storyboard'}
+                      <ArrowRight size={14} className="opacity-60" />
                   </button>
                   
                   <div className="h-4 w-[1px] bg-[#E5E5EA] mx-2" />
@@ -333,11 +450,27 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack })
                   </div>
               </div>
 
-              <div className={`flex-1 bg-white border-l border-[#E5E5EA] overflow-y-auto p-8 custom-scrollbar ${showRightPanel ? 'block' : 'hidden'}`}>
-                  <div className="max-w-2xl mx-auto bg-white min-h-[800px] shadow-apple-card border border-gray-100 p-16 relative">
-                      <div className="absolute top-0 right-0 p-4 opacity-20 pointer-events-none"><FileText size={48} /></div>
-                      {parsedLines.map((line, idx) => renderScriptLine(line, idx))}
-                  </div>
+              {/* Right Panel: Analysis & Preview */}
+              <div className={`flex-1 bg-white border-l border-[#E5E5EA] overflow-y-auto p-8 custom-scrollbar transition-all ${showRightPanel ? 'max-w-[50%]' : 'max-w-0 p-0 opacity-0 overflow-hidden'}`}>
+                  {activeProject && (activeProject.genre || activeProject.logicIssues) ? (
+                      <div className="max-w-2xl mx-auto space-y-8 animate-in slide-in-from-right-4">
+                          <h3 className="text-lg font-black text-[#1D1D1F] flex items-center gap-2">
+                              <Lightbulb className="text-yellow-500" size={20} />
+                              Analysis Report
+                          </h3>
+                          {renderAnalysisPanel()}
+                          <div className="h-px bg-gray-100 my-8" />
+                          <h3 className="text-lg font-black text-[#1D1D1F] mb-6">Preview</h3>
+                          <div className="max-w-2xl mx-auto bg-white min-h-[400px] shadow-apple-card border border-gray-100 p-12">
+                              {parsedLines.map((line, idx) => renderScriptLine(line, idx))}
+                          </div>
+                      </div>
+                  ) : (
+                      <div className="max-w-2xl mx-auto bg-white min-h-[800px] shadow-apple-card border border-gray-100 p-16 relative">
+                          <div className="absolute top-0 right-0 p-4 opacity-20 pointer-events-none"><FileText size={48} /></div>
+                          {parsedLines.map((line, idx) => renderScriptLine(line, idx))}
+                      </div>
+                  )}
               </div>
           </div>
       </div>

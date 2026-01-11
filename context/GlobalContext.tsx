@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { Channel, VolcSettings } from '../types';
 
@@ -6,8 +7,8 @@ export type Lang = 'zh' | 'en';
 // --- LOCALIZATION DATA ---
 const locales = {
   zh: {
-    title: 'SORA2 STUDIO',
-    enterprise: 'PRO',
+    title: '星光叙事引擎',
+    enterprise: 'S² Studio',
     mainNav: '资源管理',
     creationTools: '创作中心',
     postProd: '专业工具',
@@ -19,6 +20,7 @@ const locales = {
     movieRec: '风格化重绘',
     digitalHuman: '数字人合成',
     images: '图像创作',
+    infiniteCanvas: '无限画布',
     noChannel: '选择节点',
     logout: '登出',
     channelSettings: '节点设置',
@@ -41,6 +43,7 @@ const locales = {
     movieRecDesc: '专业的风格迁移与画面重构工具。',
     digitalHumanDesc: '高保真数字人驱动与合成系统处理。',
     imagesDesc: '使用 Banana 系列模型进行文生图与图生图创作。',
+    infiniteCanvasDesc: '基于节点流的非线性叙事创作空间。',
     comingSoon: '即将推出',
     genConsole: '创意工作台',
     model: '生成模型',
@@ -104,8 +107,8 @@ const locales = {
     dropFeedback: '松开设置'
   },
   en: {
-    title: 'SORA2 STUDIO',
-    enterprise: 'PRO',
+    title: 'StarNarrator',
+    enterprise: 'S² Studio',
     mainNav: 'RESOURCES',
     creationTools: 'CREATION',
     postProd: 'TOOLS',
@@ -117,6 +120,7 @@ const locales = {
     movieRec: 'Remix',
     digitalHuman: 'Digital Human',
     images: 'Image Studio',
+    infiniteCanvas: 'Infinite Canvas',
     noChannel: 'Select Node',
     logout: 'Log Out',
     channelSettings: 'Settings',
@@ -139,6 +143,7 @@ const locales = {
     movieRecDesc: 'Style migration tools.',
     digitalHumanDesc: 'Digital human synthesis.',
     imagesDesc: 'Banana series image generation.',
+    infiniteCanvasDesc: 'Node-based non-linear storytelling.',
     comingSoon: 'Soon',
     genConsole: 'Creative Hub',
     model: 'Model',
@@ -222,6 +227,14 @@ interface GlobalContextType {
 
 const GlobalContext = createContext<GlobalContextType | undefined>(undefined);
 
+export const useGlobal = () => {
+  const context = useContext(GlobalContext);
+  if (!context) {
+    throw new Error('useGlobal must be used within a GlobalProvider');
+  }
+  return context;
+};
+
 export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('sora_lang') as Lang) || 'zh');
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -273,10 +286,4 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       {children}
     </GlobalContext.Provider>
   );
-};
-
-export const useGlobal = () => {
-  const context = useContext(GlobalContext);
-  if (!context) throw new Error('useGlobal must be used within GlobalProvider');
-  return context;
 };

@@ -1,3 +1,5 @@
+
+
 import { VolcSettings, VolcModel, QueryTaskResponse } from '../types';
 
 /**
@@ -33,7 +35,7 @@ export const callVolcChatApi = async (
             content: userPrompt
         }
     ],
-    max_tokens: settings.maxTokens || 2048,
+    max_tokens: settings.maxTokens || 4096, // Increased for analysis
     stream: false,
     temperature: 0.7
   };
@@ -154,11 +156,59 @@ export const queryVolcTask = async (
   } as QueryTaskResponse;
 };
 
-// --- Preset Prompts for Script Copilot ---
+// --- Preset Prompts for Script Copilot & Deep Analysis ---
 
 export const PROMPTS = {
     EXPAND: "You are a professional screenwriter. Expand the following scene or dialogue, adding more sensory details, character depth, and atmospheric description without changing the core plot.",
     SHORTEN: "You are a professional editor. Condense the following text to be more punchy and concise, removing redundant dialogue and action lines while keeping the essential meaning.",
     FORMAT: "You are a script formatter. Fix the following text to adhere to standard screenplay format (Fountain syntax). Ensure Scene Headers are uppercase INT./EXT., Character names are uppercase, and dialogue is properly separated.",
-    ANALYZE: "Analyze the following script segment. Identify the subtext, the emotional beat change of the characters, and suggest one improvement for conflict."
+    
+    // Stage 1: Macro
+    ANALYSIS_STAGE_1: `Role: Experienced Film Planner.
+Task: Analyze the script.
+Output JSON ONLY:
+{
+  "title": "Script Title",
+  "genre": ["Genre1", "Genre2"],
+  "logline": "One sentence summary including protagonist, conflict, and resolution.",
+  "synopsis": "Detailed story outline (approx 300 words)."
+}`,
+
+    // Stage 2: Structure & Visuals
+    ANALYSIS_STAGE_2: `Role: Casting Director & Storyboard Artist.
+Task: Breakdown script into scenes and characters. Also identify key props and distinct environment settings for asset generation.
+Output JSON ONLY:
+{
+  "characters": [
+    { "name": "Name", "bio": "Short bio", "tags": ["Trait1", "Trait2"] }
+  ],
+  "environment_visuals": [
+    { "name": "Location Name", "description": "Visual description of the setting (lighting, style, era) without characters." }
+  ],
+  "props": [
+    { "name": "Item Name", "description": "Visual description of the object." }
+  ],
+  "scenes": [
+    {
+      "scene_id": number (1-based index),
+      "header": "INT. LOCATION - DAY",
+      "summary": "Brief summary",
+      "characters_present": ["Name1"],
+      "visual_prompt": "Cinematic shot, lighting style, camera angle, action description, 8k, photorealistic..."
+    }
+  ]
+}`,
+
+    // Stage 3: Deep QC
+    ANALYSIS_STAGE_3: `Role: Data Analyst & Script Doctor.
+Task: Analyze sentiment and logic.
+Output JSON ONLY:
+{
+  "analytics": [
+    { "scene_id": number, "emotion_score": number (-1.0 to 1.0), "pacing": "Fast" | "Normal" | "Slow" }
+  ],
+  "logic_issues": [
+    { "scene_ref": [number], "issue_description": "Description of contradiction or plot hole", "severity": "Low" | "Medium" | "High" }
+  ]
+}`
 };

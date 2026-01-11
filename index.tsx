@@ -11,8 +11,11 @@ import { DirectorPage } from './pages/DirectorPage';
 import { ScriptPage } from './pages/ScriptPage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { StoryboardPage } from './pages/StoryboardPage';
+import { ProjectWorkspace } from './pages/ProjectWorkspace'; // New
+import { DirectorConsolePage } from './pages/DirectorConsolePage'; // New
 import { PlaceholderPage } from './pages/PlaceholderPage';
-import { ImageGenPage } from './pages/ImageGenPage'; // New Import
+import { ImageGenPage } from './pages/ImageGenPage';
+import { InfiniteCanvasPage } from './pages/InfiniteCanvasPage'; // New
 
 const { HashRouter: Router, Routes, Route, Navigate } = ReactRouterDOM as any;
 
@@ -25,22 +28,26 @@ const App = () => {
                     <Route index element={<Navigate to="/director" replace />} />
                     <Route path="director" element={<DirectorPage />} />
                     
-                    {/* Project Management & Script Editor Routes */}
+                    {/* Project Management */}
                     <Route path="projects" element={<ProjectsPage />} />
-                    <Route path="projects/:projectId/storyboard" element={<StoryboardPage />} />
                     
-                    <Route path="script/:projectId" element={<ScriptPage />} />
-                    <Route path="script" element={<Navigate to="/projects" replace />} />
+                    {/* New Project Workspace Routes */}
+                    <Route path="project/:projectId" element={<ProjectWorkspace />}>
+                        <Route index element={<Navigate to="script" replace />} />
+                        <Route path="script" element={<ScriptPage />} />
+                        <Route path="storyboard" element={<StoryboardPage />} />
+                        <Route path="director" element={<DirectorConsolePage />} />
+                    </Route>
                     
-                    {/* Storyboard Feature (Generic View or Redirect) */}
-                    <Route path="storyboard" element={<StoryboardPage />} />
+                    {/* Legacy/Direct Script Route Redirects for compatibility */}
+                    <Route path="script/:projectId" element={<Navigate to="/project/:projectId/script" replace />} />
                     
+                    {/* Other Tools */}
                     <Route path="assets" element={<PlaceholderPage titleKey="assets" descKey="assetsDesc" />} />
                     <Route path="movie-recreation" element={<PlaceholderPage titleKey="movieRec" descKey="movieRecDesc" />} />
                     <Route path="digital-human" element={<PlaceholderPage titleKey="digitalHuman" descKey="digitalHumanDesc" />} />
-                    
-                    {/* New Image Gen Route */}
                     <Route path="images" element={<ImageGenPage />} />
+                    <Route path="infinite-canvas" element={<InfiniteCanvasPage />} />
 
                     <Route path="*" element={<Navigate to="/director" replace />} />
                 </Route>

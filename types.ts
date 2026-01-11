@@ -11,8 +11,8 @@ export enum SoraModel {
   SORA2_PORTRAIT_15S = 'sora2-portrait-15s',
   SORA2_PRO_LANDSCAPE_25S = 'sora2-pro-landscape-25s',
   SORA2_PRO_PORTRAIT_25S = 'sora2-pro-portrait-25s',
-  SORA2_PRO_PORTRAIT_HD_15S = 'sora2-pro-portrait-hd-15s',
   SORA2_PRO_LANDSCAPE_HD_15S = 'sora2-pro-landscape-hd-15s',
+  SORA2_PRO_PORTRAIT_HD_15S = 'sora2-pro-portrait-hd-15s',
   SORA2_CHARACTERS = 'sora2-characters',
 }
 
@@ -156,21 +156,58 @@ export interface ScriptProject {
   scenes?: ScriptScene[]; 
   characters?: ScriptCharacter[]; 
   
+  // V3.1 Analysis Metadata
+  synopsis?: string;
+  genre?: string[];
+  logline?: string;
+  logicIssues?: LogicIssue[];
+
   // V3.0 Storyboard Data
   storyboard?: StoryboardData;
 }
 
+export interface LogicIssue {
+  scene_refs: number[];
+  issue_description: string;
+  severity: 'Low' | 'Medium' | 'High';
+}
+
 export interface StoryboardData {
   characters: StoryboardCharacter[];
+  // V3.2 New Assets
+  sceneVisuals?: StoryboardSceneVisual[];
+  props?: StoryboardProp[];
+  
   scenes: StoryboardScene[];
   lastUpdated: number;
+  globalStyle?: string; 
 }
 
 export interface StoryboardCharacter {
   id: string;
   name: string;
   visualDescription: string;
-  referenceImageId?: string; // Generated Task ID
+  referenceImageId?: string; 
+  referenceImageUrl?: string;
+  status?: TaskStatus;
+}
+
+// Environment/Location Visuals (Distinct from Script Scenes)
+export interface StoryboardSceneVisual {
+  id: string;
+  name: string; // e.g., "Main Bedroom", "Coffee Shop Interior"
+  visualDescription: string;
+  referenceImageId?: string;
+  referenceImageUrl?: string;
+  status?: TaskStatus;
+}
+
+// Product/Prop Visuals
+export interface StoryboardProp {
+  id: string;
+  name: string; // e.g., "The Magical Sword", "Coke Can"
+  visualDescription: string;
+  referenceImageId?: string;
   referenceImageUrl?: string;
   status?: TaskStatus;
 }
@@ -187,10 +224,17 @@ export interface StoryboardShot {
   id: string;
   text: string;
   promptPreFill: string;
-  imageId?: string; // Generated Task ID
+  imageId?: string; 
   imageUrl?: string;
   status?: TaskStatus;
+  
+  // Reference IDs for Director Console
   characterIds: string[];
+  sceneVisualIds?: string[];
+  propIds?: string[];
+  
+  // V3.1: Allow user to override the constructed prompt
+  customFullPrompt?: string;
 }
 
 export interface ScriptScene {
@@ -200,6 +244,9 @@ export interface ScriptScene {
   logline: string; 
   sentiment: number; 
   lineIndex: number; 
+  
+  // V3.1 New Fields
+  pacing?: 'Fast' | 'Normal' | 'Slow';
 }
 
 export interface ScriptCharacter {
