@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   MonitorPlay, Layers, ChevronDown, Zap, AlertTriangle, 
@@ -22,9 +23,11 @@ import { TaskCard } from '../components/TaskCard';
 import { useGlobal } from '../context/GlobalContext';
 
 interface ReferenceFile {
-  file: File;
+  id: string;
+  file?: File;
   url: string;
   name: string;
+  isLoading?: boolean;
 }
 
 /**
@@ -56,7 +59,10 @@ export const DirectorPage = () => {
   const [referenceFiles, setReferenceFiles] = useState<ReferenceFile[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Drag State Logic
   const [isDragOver, setIsDragOver] = useState(false);
+  const dragCounter = useRef(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -168,6 +174,7 @@ export const DirectorPage = () => {
       const file = files[i];
       if (file.type.startsWith('image/')) {
         newRefs.push({
+          id: Date.now().toString() + i,
           file,
           url: URL.createObjectURL(file),
           name: file.name
@@ -180,16 +187,79 @@ export const DirectorPage = () => {
   const removeReference = (index: number) => {
     setReferenceFiles(prev => {
       const updated = [...prev];
-      URL.revokeObjectURL(updated[index].url);
+      if (updated[index].file) URL.revokeObjectURL(updated[index].url);
       updated.splice(index, 1);
       return updated;
     });
+  };
+
+  // Improved Drag Handler using counter
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current += 1;
+    if (dragCounter.current === 1) {
+        setIsDragOver(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current -= 1;
+    if (dragCounter.current === 0) {
+        setIsDragOver(false);
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current = 0;
+    setIsDragOver(false);
+
+    const url = e.dataTransfer.getData('text/image-url');
+    if (url) {
+        // Optimistic UI Update: Show URL immediately without blocking
+        const tempId = Date.now().toString();
+        const newRef: ReferenceFile = {
+            id: tempId,
+            url: url,
+            name: 'Loading...',
+            isLoading: true
+        };
+        setReferenceFiles(prev => [...prev, newRef]);
+
+        // Background fetch for File object
+        try {
+            const res = await fetch(url);
+            const blob = await res.blob();
+            const filename = `ref_${Date.now()}.png`;
+            const file = new File([blob], filename, { type: blob.type || 'image/png' });
+
+            setReferenceFiles(prev => prev.map(item => 
+                item.id === tempId 
+                ? { ...item, file, name: filename, isLoading: false } 
+                : item
+            ));
+        } catch (err) {
+            console.error("Failed to load dropped image:", err);
+            // Remove the failed placeholder or set error state
+            setReferenceFiles(prev => prev.filter(item => item.id !== tempId));
+        }
+    } else if (e.dataTransfer.files?.length > 0) {
+        addFiles(Array.from(e.dataTransfer.files));
+    }
   };
 
   const handleCreate = async () => {
     if (!activeChannel?.apiToken) { setError(t('missingToken')); return; }
     if (!inputPrompt.trim()) return;
     
+    // Check if any reference is still loading
+    const pendingRef = referenceFiles.find(r => r.isLoading);
+    if (pendingRef) {
+        setError(lang === 'zh' ? '请等待参考图加载完成' : 'Please wait for images to load');
+        return;
+    }
+
     setIsSubmitting(true);
     setError(null);
     const localId = Date.now().toString();
@@ -202,7 +272,7 @@ export const DirectorPage = () => {
         
         // Use primary reference for current API compatibility
         const apiId = referenceFiles.length > 0 
-          ? await createVideoI2VTask(activeChannel.baseUrl, activeChannel.apiToken, inputPrompt, mappedModel, referenceFiles[0].file)
+          ? await createVideoI2VTask(activeChannel.baseUrl, activeChannel.apiToken, inputPrompt, mappedModel, referenceFiles[0].file!)
           : await createVideoTask(activeChannel.baseUrl, activeChannel.apiToken, inputPrompt, mappedModel);
         
         setVideoTasks(prev => prev.map(t => t.id === localId ? { ...t, apiId, status: 'processing' } : t));
@@ -212,7 +282,7 @@ export const DirectorPage = () => {
         
         const apiId = referenceFiles.length === 0
           ? await createImageGenerationTask(activeChannel.baseUrl, activeChannel.apiToken, inputPrompt, ImageModel.NANO_BANANA_2, { size: aspectRatio, resolution })
-          : await createImageEditTask(activeChannel.baseUrl, activeChannel.apiToken, inputPrompt, ImageModel.NANO_BANANA_2, referenceFiles[0].file, { aspect_ratio: aspectRatio, image_size: resolution });
+          : await createImageEditTask(activeChannel.baseUrl, activeChannel.apiToken, inputPrompt, ImageModel.NANO_BANANA_2, referenceFiles[0].file!, { aspect_ratio: aspectRatio, image_size: resolution });
         
         setImageTasks(prev => prev.map(t => t.id === localId ? { ...t, apiId, status: 'processing' } : t));
       }
@@ -232,29 +302,69 @@ export const DirectorPage = () => {
   return (
     <div 
         className="h-full relative bg-white overflow-hidden flex flex-col selection:bg-blue-500/10"
-        onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
-        onDragLeave={() => setIsDragOver(false)}
-        onDrop={async (e) => {
-            e.preventDefault(); setIsDragOver(false);
-            const url = e.dataTransfer.getData('text/image-url');
-            if (url) {
-                const res = await fetch(url);
-                const buf = await res.arrayBuffer();
-                const file = new File([buf], `ref_${Date.now()}.png`, { type: 'image/png' });
-                addFiles([file]);
-            } else if (e.dataTransfer.files?.length > 0) {
-                addFiles(Array.from(e.dataTransfer.files));
-            }
-        }}
+        onDragEnter={handleDragEnter}
+        onDragOver={(e) => e.preventDefault()}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
     >
       {/* Lightbox Viewer */}
       {viewerTask && (
-        <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-2xl flex items-center justify-center p-6 animate-in fade-in duration-300" onClick={() => setViewerTask(null)}>
-            <div className="max-w-4xl w-full flex flex-col items-center gap-6" onClick={e => e.stopPropagation()}>
-                <img src={viewerTask.resultUrls?.[viewerIndex] || viewerTask.resultUrl} className="max-h-[75vh] object-contain rounded-[24px] shadow-2xl" />
-                <div className="p-8 bg-white/10 backdrop-blur-xl rounded-[32px] w-full border border-white/5  text-center">
-                   <p className="text-white text-lg font-bold mb-6">{viewerTask.prompt}</p>
-                   <button onClick={() => {/* Download */}} className="bg-white text-black px-10 py-3.5 rounded-full font-black flex items-center gap-2 mx-auto hover:bg-gray-100 transition-all"><Download size={20} />{t('download')}</button>
+        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-4 md:p-8 animate-in fade-in duration-300" onClick={() => setViewerTask(null)}>
+            <div className="max-w-5xl w-full h-full max-h-[90vh] flex flex-col bg-[#1C1C1E] rounded-[32px] overflow-hidden shadow-2xl border border-white/10" onClick={e => e.stopPropagation()}>
+                {/* Header / Close */}
+                <div className="absolute top-6 right-6 z-50">
+                    <button onClick={() => setViewerTask(null)} className="p-2 bg-black/50 hover:bg-white/20 text-white rounded-full transition-all">
+                        <X size={20} />
+                    </button>
+                </div>
+
+                {/* Image Area - Flexible */}
+                <div className="flex-1 min-h-0 w-full bg-black flex items-center justify-center p-4 relative group/image">
+                     <img 
+                        src={viewerTask.resultUrls?.[viewerIndex] || viewerTask.resultUrl} 
+                        className="w-full h-full object-contain" 
+                        alt={viewerTask.prompt}
+                     />
+                </div>
+
+                {/* Footer Area - Fixed/Constrained */}
+                <div className="shrink-0 p-6 md:p-8 bg-white/5 backdrop-blur-xl border-t border-white/5 flex flex-col gap-4">
+                     {/* Thumbnails */}
+                     {viewerTask.resultUrls && viewerTask.resultUrls.length > 1 && (
+                         <div className="flex justify-center gap-2 mb-2 overflow-x-auto py-2 custom-scrollbar-h">
+                             {viewerTask.resultUrls.map((url, i) => (
+                                 <button key={i} onClick={() => setViewerIndex(i)} className={`w-12 h-12 shrink-0 rounded-lg overflow-hidden border-2 transition-all ${i === viewerIndex ? 'border-blue-500 scale-110' : 'border-transparent opacity-50'}`}>
+                                     <img src={url} className="w-full h-full object-cover" />
+                                 </button>
+                             ))}
+                         </div>
+                     )}
+
+                     <div className="flex flex-col md:flex-row items-center gap-6 justify-between">
+                         <div className="flex-1 min-w-0 text-center md:text-left w-full">
+                             <div className="max-h-[100px] overflow-y-auto custom-scrollbar pr-2">
+                                <p className="text-white/90 text-sm font-medium leading-relaxed whitespace-pre-wrap">{viewerTask.prompt}</p>
+                             </div>
+                         </div>
+                         <div className="shrink-0">
+                             <button 
+                                onClick={() => {
+                                   const url = viewerTask.resultUrls?.[viewerIndex] || viewerTask.resultUrl;
+                                   if(url) {
+                                       const a = document.createElement('a');
+                                       a.href = url;
+                                       a.download = `sora_creation_${viewerTask.id}.png`;
+                                       document.body.appendChild(a);
+                                       a.click();
+                                       document.body.removeChild(a);
+                                   }
+                                }} 
+                                className="bg-white text-black px-8 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-gray-200 transition-all text-xs uppercase tracking-wider"
+                             >
+                                <Download size={16} /> {t('download')}
+                             </button>
+                         </div>
+                     </div>
                 </div>
             </div>
         </div>
@@ -313,12 +423,20 @@ export const DirectorPage = () => {
             {referenceFiles.length > 0 && (
                 <div className="absolute -top-[64px] left-0 right-0 flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-2 z-50 animate-in slide-in-from-bottom-2 duration-200 px-2 transform-gpu">
                     {referenceFiles.map((ref, idx) => (
-                        <div key={idx} className="flex items-center gap-1.5 bg-white/90 backdrop-blur-3xl p-1 rounded-xl shadow-lg border border-white ring-1 ring-black/5 shrink-0 group transform-gpu transition-all hover:bg-white active:scale-95">
+                        <div key={ref.id} className="flex items-center gap-1.5 bg-white/90 backdrop-blur-3xl p-1 rounded-xl shadow-lg border border-white ring-1 ring-black/5 shrink-0 group transform-gpu transition-all hover:bg-white active:scale-95">
                             <div className="relative">
-                                <img src={ref.url} className="w-8 h-8 rounded-lg object-cover shadow-sm ring-1 ring-black/5" />
-                                <div className="absolute -top-1 -right-1 bg-blue-500 text-white rounded-full p-0.5 shadow-md">
-                                    <Check size={8} strokeWidth={5} />
-                                </div>
+                                {ref.isLoading ? (
+                                    <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center shadow-sm border border-gray-200">
+                                        <Loader2 size={12} className="animate-spin text-[#007AFF]" />
+                                    </div>
+                                ) : (
+                                    <img src={ref.url} className="w-8 h-8 rounded-lg object-cover shadow-sm ring-1 ring-black/5" />
+                                )}
+                                {!ref.isLoading && (
+                                    <div className="absolute -top-1 -right-1 bg-blue-500 text-white rounded-full p-0.5 shadow-md">
+                                        <Check size={8} strokeWidth={5} />
+                                    </div>
+                                )}
                             </div>
                             <div className="flex flex-col pr-1.5 max-w-[80px]">
                                 <span className="text-[7px] font-black text-blue-500/60 tracking-tighter uppercase leading-none mb-0.5">
@@ -353,7 +471,7 @@ export const DirectorPage = () => {
                         : 'border border-[rgba(0,0,0,0.08)]'}`}
             >
                 {isDragOver && (
-                    <div className="absolute inset-0 z-[60] flex items-center justify-center bg-white/80 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="absolute inset-0 z-[60] flex items-center justify-center bg-white/80 backdrop-blur-sm animate-in fade-in duration-200 pointer-events-none">
                         <div className="flex flex-col items-center animate-pulse">
                             <div className="bg-blue-600/10 p-4 rounded-full mb-3">
                                 <Files size={40} className="text-[#007AFF]" />

@@ -1,9 +1,10 @@
+
 import React, { useRef, useState, useEffect } from 'react';
 import { VideoTask } from '../types';
 import { ProgressBar } from './ProgressBar';
 import { 
-  Play, Pause, Volume2, VolumeX, AlertCircle, Clock, 
-  Loader2, Download, Maximize2, Minimize2, UserPlus, Scissors
+  AlertCircle, Clock, Loader2, Download, Maximize2, Minimize2, 
+  UserPlus, Scissors
 } from 'lucide-react';
 
 interface TaskCardProps {
@@ -14,15 +15,12 @@ interface TaskCardProps {
 
 export const TaskCard: React.FC<TaskCardProps> = ({ task, onCreateCharacter, lang = 'en' }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [volume, setVolume] = useState(1);
-  const [isMuted, setIsMuted] = useState(false);
-  
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
   const [isExpanded, setIsExpanded] = useState(false);
   
+  // Clip mode state (preserved for functionality)
   const [isClipMode, setIsClipMode] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0); // Tracked for clipping only
+  const [duration, setDuration] = useState(0);
 
   const t = {
     zh: {
@@ -64,66 +62,6 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onCreateCharacter, lan
     return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  /**
-   * Fixed play/pause interruption bug.
-   * video.play() returns a promise that must be resolved/handled to avoid console errors.
-   */
-  const togglePlay = async (e?: React.MouseEvent) => {
-    e?.stopPropagation();
-    const video = videoRef.current;
-    if (!video) return;
-
-    if (video.paused) {
-      try {
-        await video.play();
-        setIsPlaying(true);
-      } catch (err) {
-        console.warn('Playback request was interrupted or failed:', err);
-      }
-    } else {
-      video.pause();
-      setIsPlaying(false);
-    }
-  };
-
-  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    e.stopPropagation();
-    const newVol = parseFloat(e.target.value);
-    setVolume(newVol);
-    if (videoRef.current) {
-      videoRef.current.volume = newVol;
-      setIsMuted(newVol === 0);
-    }
-  };
-
-  const toggleMute = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (videoRef.current) {
-      const newMuted = !isMuted;
-      setIsMuted(newMuted);
-      videoRef.current.muted = newMuted;
-      if (!newMuted && volume === 0) {
-        setVolume(0.5);
-        videoRef.current.volume = 0.5;
-      }
-    }
-  };
-
-  const handleTimeUpdate = () => {
-    if (videoRef.current) setCurrentTime(videoRef.current.currentTime);
-  };
-
-  const handleLoadedMetadata = () => {
-    if (videoRef.current) setDuration(videoRef.current.duration);
-  };
-
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    e.stopPropagation();
-    const time = parseFloat(e.target.value);
-    setCurrentTime(time);
-    if (videoRef.current) videoRef.current.currentTime = time;
-  };
-
   const toggleExpand = (e: React.MouseEvent) => {
     e.stopPropagation();
     setIsExpanded(!isExpanded);
@@ -132,17 +70,16 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onCreateCharacter, lan
   const handleCreateCharClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     setIsClipMode(!isClipMode);
-    if (!isClipMode) {
-        if (videoRef.current) {
-            videoRef.current.pause();
-            setIsPlaying(false);
-        }
+    // Pause video when entering clip mode to make selection easier
+    if (!isClipMode && videoRef.current) {
+        videoRef.current.pause();
     }
   };
 
   const confirmCharacterCreation = (e: React.MouseEvent) => {
       e.stopPropagation();
       if (onCreateCharacter && task.apiId) {
+          // Use current time from state (updated by timeupdate listener)
           const start = Math.floor(currentTime);
           let end = start + 3;
           if (end > duration) {
@@ -159,27 +96,18 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onCreateCharacter, lan
       }
   };
 
+  // Basic listeners for Clip Mode functionality
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    // Sync initial play state
-    setIsPlaying(!video.paused);
+    const handleTimeUpdate = () => setCurrentTime(video.currentTime);
+    const handleLoadedMetadata = () => setDuration(video.duration);
 
-    const onPlay = () => setIsPlaying(true);
-    const onPause = () => setIsPlaying(false);
-    const onEnded = () => setIsPlaying(false);
-
-    video.addEventListener('play', onPlay);
-    video.addEventListener('pause', onPause);
-    video.addEventListener('ended', onEnded);
     video.addEventListener('timeupdate', handleTimeUpdate);
     video.addEventListener('loadedmetadata', handleLoadedMetadata);
 
     return () => {
-      video.removeEventListener('play', onPlay);
-      video.removeEventListener('pause', onPause);
-      video.removeEventListener('ended', onEnded);
       video.removeEventListener('timeupdate', handleTimeUpdate);
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
     };
@@ -198,7 +126,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onCreateCharacter, lan
 
   return (
     <>
-      {isExpanded && <div className="bg-white/50 backdrop-blur-sm fixed inset-0 z-40" />}
+      {isExpanded && <div className="bg-white/50 backdrop-blur-sm fixed inset-0 z-40" onClick={() => setIsExpanded(false)} />}
       <div 
         className={`
           bg-white border transition-all duration-500 flex flex-col overflow-hidden
@@ -239,18 +167,20 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onCreateCharacter, lan
         <div className={`relative flex items-center justify-center group overflow-hidden bg-black ${isExpanded ? 'h-full w-full rounded-[24px]' : 'aspect-video'}`}>
           {task.status === 'success' && (task.videoUrl || task.coverUrl) ? (
             <>
+              {/* Native Video Element */}
               <video 
                 ref={videoRef}
                 src={task.videoUrl} 
                 poster={task.coverUrl}
-                className={`object-contain transition-transform duration-700 ${isExpanded ? 'w-full h-full bg-black' : 'w-full h-full object-cover group-hover:scale-105'}`}
-                loop
+                className={`object-contain ${isExpanded ? 'w-full h-full bg-black' : 'w-full h-full object-cover'}`}
+                controls
                 playsInline
-                onClick={(e) => togglePlay(e)}
+                preload="metadata"
               />
               
+              {/* Clip Mode Overlay - Only shows when actively clipping */}
               {isClipMode && (
-                  <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/40 backdrop-blur-md animate-in fade-in duration-300">
+                  <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/40 backdrop-blur-md animate-in fade-in duration-300 pointer-events-auto">
                       <div className="bg-white p-6 rounded-[24px] shadow-2xl flex flex-col items-center gap-4 max-w-[280px]">
                           <div className="flex items-center gap-3 text-[#007AFF] font-black tracking-widest text-sm">
                               <Scissors size={20} />
@@ -277,78 +207,34 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onCreateCharacter, lan
                   </div>
               )}
 
-              <div className="absolute top-0 left-0 right-0 p-5 opacity-0 group-hover:opacity-100 transition-all duration-300 z-20 flex justify-end gap-3 bg-gradient-to-b from-black/40 to-transparent">
+              {/* Utility Buttons (Download, Expand) - Positioned nicely but not blocking controls */}
+              <div className="absolute top-4 right-4 flex gap-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                   {!task.isCharacterAsset && onCreateCharacter && task.apiId && (
                      <button 
                        onClick={handleCreateCharClick}
-                       className={`p-2.5 rounded-full backdrop-blur-md transition-all ${isClipMode ? 'bg-[#007AFF] text-white shadow-lg' : 'bg-white/20 hover:bg-[#007AFF] text-white'}`}
+                       className={`p-2 rounded-full backdrop-blur-md transition-all ${isClipMode ? 'bg-[#007AFF] text-white shadow-lg' : 'bg-white/20 hover:bg-[#007AFF] text-white'}`}
                        title={t.createChar}
                      >
-                       <UserPlus size={18} />
+                       <UserPlus size={16} />
                      </button>
                   )}
-                  <a href={task.videoUrl} target="_blank" rel="noopener noreferrer" className="p-2.5 bg-white/20 hover:bg-white/40 rounded-full text-white backdrop-blur-md transition-all" onClick={(e) => e.stopPropagation()}>
-                      <Download size={18} />
+                  <a 
+                    href={task.videoUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="p-2 bg-white/20 hover:bg-white/40 rounded-full text-white backdrop-blur-md transition-all"
+                    title="Download"
+                  >
+                      <Download size={16} />
                   </a>
-                  <button onClick={toggleExpand} className="p-2.5 bg-white/20 hover:bg-white/40 rounded-full text-white backdrop-blur-md transition-all">
-                      {isExpanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+                  <button 
+                    onClick={toggleExpand} 
+                    className="p-2 bg-white/20 hover:bg-white/40 rounded-full text-white backdrop-blur-md transition-all"
+                    title={isExpanded ? "Minimize" : "Maximize"}
+                  >
+                      {isExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
                   </button>
               </div>
-
-              <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-500 flex flex-col gap-4 z-20 translate-y-2 group-hover:translate-y-0">
-                  <div className="flex items-center gap-4 w-full relative">
-                     <span className="text-[10px] font-mono text-white/90 w-10 text-right font-medium">{formatTime(currentTime)}</span>
-                     <div className="relative flex-1 h-1 group/slider">
-                        <input
-                            type="range"
-                            min="0"
-                            max={duration || 100}
-                            value={currentTime}
-                            onChange={handleSeek}
-                            onClick={(e) => e.stopPropagation()}
-                            className="absolute inset-0 z-20 w-full h-full opacity-0 cursor-pointer"
-                        />
-                        <div className="absolute inset-0 bg-white/30 rounded-full overflow-hidden backdrop-blur-sm">
-                            <div className="h-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.6)]" style={{ width: `${(currentTime * 100) / (duration || 1)}%` }}></div>
-                        </div>
-                     </div>
-                     <span className="text-[10px] font-mono text-white/90 w-10 font-medium">{formatTime(duration)}</span>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-6">
-                        <button 
-                          onClick={togglePlay}
-                          className="text-white hover:scale-110 transition-all transform active:scale-95"
-                        >
-                          {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />}
-                        </button>
-                        <div className="flex items-center gap-3 group/volume">
-                          <button onClick={toggleMute} className="text-white hover:text-white/80 transition-colors">
-                            {isMuted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
-                          </button>
-                          <input 
-                            type="range" 
-                            min="0" 
-                            max="1" 
-                            step="0.05" 
-                            value={isMuted ? 0 : volume} 
-                            onChange={handleVolumeChange}
-                            onClick={(e) => e.stopPropagation()}
-                            className="w-20 h-1 bg-white/30 rounded-full appearance-none cursor-pointer accent-white"
-                          />
-                        </div>
-                      </div>
-                  </div>
-              </div>
-              
-              {!isPlaying && !isClipMode && (
-                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 bg-black/10 group-hover:bg-black/0 transition-all duration-500">
-                   <div className="w-16 h-16 rounded-full bg-white/30 backdrop-blur-md flex items-center justify-center shadow-lg border border-white/20 group-hover:scale-110 transition-transform duration-500">
-                      <Play size={32} fill="white" className="text-white ml-1" />
-                   </div>
-                 </div>
-              )}
             </>
           ) : task.status === 'failed' ? (
             <div className="flex flex-col items-center text-red-400 p-8 text-center animate-in zoom-in-95 duration-300 bg-[#FFF5F5] w-full h-full justify-center">

@@ -1,8 +1,10 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Image as ImageIcon, Type, Upload, ChevronDown, Zap, 
   AlertTriangle, Loader2, Plus, Trash2, Maximize2, 
-  Download, RefreshCw, X, LayoutGrid, ExternalLink, MousePointer2
+  Download, RefreshCw, X, LayoutGrid, ExternalLink, MousePointer2,
+  Copy, Check
 } from 'lucide-react';
 import { 
   ImageModel, IMAGE_MODEL_OPTIONS, TaskStatus, 
@@ -26,6 +28,10 @@ export const ImageGenPage = () => {
   const [viewerTask, setViewerTask] = useState<ImageTask | null>(null);
   const [viewerIndex, setViewerIndex] = useState(0);
   const [isDragOver, setIsDragOver] = useState(false);
+  
+  // --- Viewer States ---
+  const [isPromptExpanded, setIsPromptExpanded] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
   
   // --- Form States ---
   const [prompt, setPrompt] = useState('');
@@ -166,6 +172,8 @@ export const ImageGenPage = () => {
   const openViewer = (task: ImageTask, index: number = 0) => {
       setViewerTask(task);
       setViewerIndex(index);
+      setIsPromptExpanded(false);
+      setIsCopied(false);
   };
 
   // --- Drag and Drop Handlers ---
@@ -217,14 +225,14 @@ export const ImageGenPage = () => {
        
        {/* Lightbox Viewer */}
        {viewerTask && currentViewerUrl && (
-           <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-4 sm:p-10" onClick={() => setViewerTask(null)}>
-                <button className="absolute top-6 right-6 text-white/50 hover:text-white transition-colors z-[110]"><X size={36} /></button>
-                <div className="max-w-6xl w-full flex flex-col items-center gap-6 animate-in zoom-in-95 duration-300" onClick={e => e.stopPropagation()}>
-                    <div className="bg-[#1C1C1E] rounded-[32px] overflow-hidden shadow-2xl relative flex flex-col w-full border border-white/10">
-                        <div className="flex-1 flex items-center justify-center bg-black min-h-[50vh] relative group/v">
+           <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-4 sm:p-8" onClick={() => setViewerTask(null)}>
+                <button className="absolute top-6 right-6 text-white/50 hover:text-white transition-colors z-[110] p-2 hover:bg-white/10 rounded-full"><X size={28} /></button>
+                <div className="max-w-6xl w-full flex flex-col items-center gap-6 animate-in zoom-in-95 duration-300 max-h-[90vh]" onClick={e => e.stopPropagation()}>
+                    <div className="bg-[#1C1C1E] rounded-[32px] overflow-hidden shadow-2xl relative flex flex-col w-full border border-white/10 h-full max-h-full">
+                        <div className="flex-1 flex items-center justify-center bg-black min-h-0 relative group/v overflow-hidden">
                             <img 
                                 src={currentViewerUrl} 
-                                className="max-h-[70vh] w-auto object-contain selection:none" 
+                                className="w-full h-full object-contain selection:none max-h-full" 
                                 alt="Generated Result"
                                 onError={(e) => {
                                     (e.target as HTMLImageElement).src = 'https://via.placeholder.com/800x600?text=Image+Load+Error';
@@ -240,15 +248,15 @@ export const ImageGenPage = () => {
                             </button>
                         </div>
                         
-                        <div className="p-8 bg-white/5 backdrop-blur-md">
+                        <div className="p-6 md:p-8 bg-white/5 backdrop-blur-md shrink-0 flex flex-col gap-4 border-t border-white/5">
                             {/* Thumbnails */}
                             {viewerTask.resultUrls && viewerTask.resultUrls.length > 1 && (
-                                <div className="flex gap-3 mb-6 overflow-x-auto pb-4 custom-scrollbar-h justify-center">
+                                <div className="flex gap-3 mb-2 overflow-x-auto pb-2 custom-scrollbar-h justify-center shrink-0">
                                     {viewerTask.resultUrls.map((url, i) => (
                                         <div 
                                             key={i} 
                                             onClick={() => setViewerIndex(i)}
-                                            className={`w-20 h-20 rounded-xl overflow-hidden cursor-pointer border-2 transition-all flex-shrink-0 ${viewerIndex === i ? 'border-indigo-500 scale-110 shadow-lg' : 'border-transparent opacity-40 hover:opacity-80'}`}
+                                            className={`w-16 h-16 rounded-lg overflow-hidden cursor-pointer border-2 transition-all flex-shrink-0 ${viewerIndex === i ? 'border-indigo-500 scale-105 shadow-lg' : 'border-transparent opacity-50 hover:opacity-100'}`}
                                         >
                                             <img src={url} className="w-full h-full object-cover" />
                                         </div>
@@ -256,20 +264,50 @@ export const ImageGenPage = () => {
                                 </div>
                             )}
 
-                            <div className="flex items-start justify-between gap-6">
-                                <div className="flex-1">
-                                    <p className="text-white text-base font-medium leading-relaxed mb-2">{viewerTask.prompt}</p>
-                                    <div className="flex items-center gap-3">
+                            <div className="flex flex-col md:flex-row items-start justify-between gap-6">
+                                <div className="flex-1 min-w-0 w-full">
+                                    <div className={`relative transition-all duration-300 bg-black/20 rounded-xl p-3 border border-white/5 ${isPromptExpanded ? 'max-h-[160px] overflow-y-auto custom-scrollbar' : 'max-h-[48px] overflow-hidden cursor-pointer hover:bg-black/30'}`} onClick={() => !isPromptExpanded && setIsPromptExpanded(true)}>
+                                        <p className="text-white/90 text-sm font-medium leading-relaxed whitespace-pre-wrap">
+                                            {viewerTask.prompt}
+                                        </p>
+                                        {!isPromptExpanded && viewerTask.prompt.length > 80 && (
+                                            <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-[#252527] to-transparent pointer-events-none" />
+                                        )}
+                                    </div>
+                                    
+                                    <div className="flex items-center gap-2 mt-3 flex-wrap">
                                         <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest bg-indigo-500/10 px-2 py-1 rounded">{viewerTask.model}</span>
-                                        <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">{viewerTask.type}</span>
+                                        <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest border border-white/10 px-2 py-1 rounded">{viewerTask.type}</span>
+                                        
+                                        {viewerTask.prompt.length > 80 && (
+                                            <button 
+                                                onClick={() => setIsPromptExpanded(!isPromptExpanded)}
+                                                className="text-indigo-400 text-xs font-bold hover:text-indigo-300 transition-colors ml-2 px-2 py-1 rounded hover:bg-white/5"
+                                            >
+                                                {isPromptExpanded ? (lang === 'zh' ? '收起' : 'Show Less') : (lang === 'zh' ? '展开' : 'Show More')}
+                                            </button>
+                                        )}
+                                        
+                                        <button 
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(viewerTask.prompt);
+                                                setIsCopied(true);
+                                                setTimeout(() => setIsCopied(false), 2000);
+                                            }}
+                                            className="text-gray-400 hover:text-white text-xs font-bold flex items-center gap-1.5 transition-colors ml-auto px-2 py-1 rounded hover:bg-white/5 border border-transparent hover:border-white/10"
+                                            title="Copy Prompt"
+                                        >
+                                            {isCopied ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
+                                            {isCopied ? (lang === 'zh' ? '已复制' : 'Copied') : (lang === 'zh' ? '复制提示词' : 'Copy Prompt')}
+                                        </button>
                                     </div>
                                 </div>
-                                <div className="flex gap-4">
+                                <div className="flex gap-4 shrink-0 w-full md:w-auto">
                                     <button 
                                         onClick={() => currentViewerUrl && handleDownload(currentViewerUrl, viewerTask.id)}
-                                        className="bg-white text-black px-8 py-4 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-gray-100 transition-all active:scale-95 shadow-xl shadow-white/5"
+                                        className="w-full md:w-auto bg-white text-black px-6 py-3.5 rounded-xl font-black flex items-center justify-center gap-2 hover:bg-gray-200 transition-all active:scale-95 shadow-xl shadow-white/5 text-sm"
                                     >
-                                        {isDownloading === viewerTask.id + currentViewerUrl ? <Loader2 size={20} className="animate-spin" /> : <Download size={20} />}
+                                        {isDownloading === viewerTask.id + currentViewerUrl ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
                                         {t('download')}
                                     </button>
                                 </div>
