@@ -23,7 +23,8 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onCreateCharacter, lan
   const [duration, setDuration] = useState(0);
 
   // Helper to determine if model is portrait, though grid container remains 16:9
-  const isPortrait = typeof task.model === 'string' && task.model.toUpperCase().includes('PORTRAIT');
+  // Fixed: Added check for task.model existence
+  const isPortrait = task.model && typeof task.model === 'string' && task.model.toUpperCase().includes('PORTRAIT');
 
   const t = {
     zh: {
@@ -110,6 +111,11 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onCreateCharacter, lan
     };
   }, [task.videoUrl, isExpanded]); 
 
+  // Safe model string display
+  const modelDisplay = task.model && typeof task.model === 'string' 
+    ? task.model.replace('sora2-', '').toUpperCase() 
+    : 'VIDEO';
+
   return (
     <>
       {isExpanded && <div className="bg-white/50 backdrop-blur-sm fixed inset-0 z-40" onClick={() => setIsExpanded(false)} />}
@@ -131,7 +137,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onCreateCharacter, lan
                     ${task.isCharacterAsset 
                         ? 'text-purple-600 bg-purple-100 border-purple-200' 
                         : 'text-[#007AFF] bg-blue-50 border-blue-100'}`}>
-                  {task.isCharacterAsset ? t.char : (typeof task.model === 'string' ? task.model.replace('sora2-', '').toUpperCase() : 'VIDEO')}
+                  {task.isCharacterAsset ? t.char : modelDisplay}
                 </span>
                 <span className="text-[10px] text-[#86868B] flex items-center gap-1 font-medium">
                   <Clock size={10} /> {formatDate(task.createdAt)}

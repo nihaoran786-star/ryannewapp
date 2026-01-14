@@ -3,7 +3,6 @@ import { SoraModel, QueryTaskResponse } from '../types';
 
 /**
  * Sora 2.0 Service Adapter
- * 根据用户提供的 Axios 示例优化
  */
 
 const findTaskIdInResponse = (response: any): string | null => {
@@ -11,6 +10,7 @@ const findTaskIdInResponse = (response: any): string | null => {
   if (response.id) return response.id;
   if (response.task_id) return response.task_id;
   if (response.data?.id) return response.data.id;
+  if (typeof response === 'string' && response.length > 5 && !response.startsWith('{')) return response;
   return null;
 };
 
@@ -22,6 +22,7 @@ const apiRequest = async <T>(
 ): Promise<T> => {
   const headers: HeadersInit = {
     'Authorization': `Bearer ${token}`,
+    'Accept': 'application/json',
   };
 
   if (!(body instanceof FormData)) {
@@ -35,11 +36,28 @@ const apiRequest = async <T>(
   };
 
   const response = await fetch(endpoint, config);
-  const result = await response.json();
+  let result;
+  
+  try {
+    result = await response.json();
+  } catch (e) {
+    if (!response.ok) throw new Error(`API Error (${response.status}): ${response.statusText}`);
+    throw new Error('Invalid JSON response from server');
+  }
+  
+  if (result && typeof result === 'object') {
+      if (result.code && result.message && ![0, 200, 'success'].includes(result.code)) {
+          throw new Error(result.message);
+      }
+      if (result.error && typeof result.error === 'object' && result.error.message) {
+          throw new Error(result.error.message);
+      }
+  }
   
   if (!response.ok) {
-    throw new Error(result.message || result.error || 'API Request Failed');
+    throw new Error(result?.message || result?.error || `API Request Failed: ${response.status}`);
   }
+  
   return result as T;
 };
 
@@ -49,25 +67,37 @@ export const createVideoTask = async (
   prompt: string,
   model: SoraModel,
   options?: {
-    motion_intensity?: number;
-    camera_movement?: string;
+    aspectRatio?: string;
   }
 ): Promise<string> => {
-  // 构建与 Sora 2 接口一致的 JSON 负载
+  // Defensive check: Ensure model is defined string, fallback to base if not
+  const safeModel = model || SoraModel.SORA_V2;
+  
+  // Safety check for includes method to prevent Uncaught TypeError
+  const modelStr = String(safeModel);
+  const isPro = modelStr.includes && modelStr.includes('pro');
+  const resolution = isPro ? '1080p' : '720p';
+  
+  // 强制限定比例，防止 UI 传递非法值
+  let ratio = options?.aspectRatio || '16:9';
+  if (!['16:9', '9:16'].includes(ratio)) {
+    ratio = modelStr.includes && modelStr.includes('portrait') ? '9:16' : '16:9';
+  }
+
   const payload = { 
     prompt, 
-    model,
-    // 如果 API 支持，传递额外的 Sora 2 控制参数
-    options: {
-      motion_intensity: options?.motion_intensity || 5,
-      camera_movement: options?.camera_movement || 'static'
-    }
+    model: "sora-2", // API always expects base model name, specific behavior governed by params
+    aspect_ratio: ratio,
+    resolution: resolution
   };
 
-  const endpoint = `${baseUrl.replace(/\/$/, '')}/v1/videos`;
+  const endpoint = `${baseUrl.trim().replace(/\/$/, '')}/v1/videos`;
+  console.log("🚀 [Sora Video Task Initiated]", { endpoint, payload });
+  
   const response = await apiRequest<any>(endpoint, 'POST', token, payload);
   const taskId = findTaskIdInResponse(response);
-  if (!taskId) throw new Error("API 未返回有效的任务 ID");
+  
+  if (!taskId) throw new Error("API 返回成功但未包含任务 ID。");
   return taskId;
 };
 
@@ -78,15 +108,15 @@ export const createVideoI2VTask = async (
   model: SoraModel,
   imageFile: File
 ): Promise<string> => {
-  const endpoint = `${baseUrl.replace(/\/$/, '')}/v1/videos`;
+  const endpoint = `${baseUrl.trim().replace(/\/$/, '')}/v1/videos`;
   const formData = new FormData();
   formData.append('prompt', prompt);
-  formData.append('model', model);
+  formData.append('model', "sora-2");
   formData.append('input_reference', imageFile);
 
   const response = await apiRequest<any>(endpoint, 'POST', token, formData);
   const taskId = findTaskIdInResponse(response);
-  if (!taskId) throw new Error("API 未返回有效的任务 ID");
+  if (!taskId) throw new Error("I2V API 返回成功但未包含任务 ID。");
   return taskId;
 };
 
@@ -95,9 +125,8 @@ export const queryVideoTask = async (
   token: string,
   apiId: string
 ): Promise<QueryTaskResponse> => {
-  const endpoint = `${baseUrl.replace(/\/$/, '')}/v1/videos/${apiId}`;
+  const endpoint = `${baseUrl.trim().replace(/\/$/, '')}/v1/videos/${apiId}`;
   const data = await apiRequest<any>(endpoint, 'GET', token);
-  
   const apiData = data.data || data.task || data;
 
   return {

@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect } from 'react';
 import * as ReactRouterDOM from 'react-router-dom';
 import { 
@@ -259,7 +258,7 @@ export const StoryboardPage = () => {
               activeChannel.apiToken, 
               `${promptPrefix}, ${item.visualDescription}, ${globalStyle}`, 
               ImageModel.NANO_BANANA_2,
-              { size: '1:1', resolution: '1K' }
+              { aspectRatio: '1:1', resolution: '1K' }
           );
           
           const sb = project.storyboard!;

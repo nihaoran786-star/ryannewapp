@@ -3,136 +3,152 @@ import { ImageModel, QueryImageResponse } from '../types';
 
 /**
  * Image Generation Service
- * Optimized for Nano Banana 2 and robust result parsing.
  */
 
 const getEndpoint = (baseUrl: string, path: string) => {
-    const cleanBase = baseUrl.replace(/\/$/, '');
-    return `${cleanBase}${path}`;
+    const base = baseUrl.trim().replace(/\/+$/, '');
+    const p = path.trim().replace(/^\/+/, '');
+    
+    // 如果 baseUrl 已经以 /v1 结尾
+    if (base.endsWith('/v1')) {
+        // 去掉 path 开头的 v1/
+        const subPath = p.startsWith('v1/') ? p.substring(3) : p;
+        return `${base}/${subPath}`;
+    }
+    
+    // 如果 path 不带 v1/，则补上
+    if (!p.startsWith('v1/')) {
+        return `${base}/v1/${p}`;
+    }
+
+    return `${base}/${p}`;
 };
 
-/**
- * Normalizes image strings. Adds Base64 prefix if missing.
- */
+const isLikelyBase64 = (str: string): boolean => {
+    if (!str || str.length < 100) return false;
+    return /^[A-Za-z0-9+/=\s]+$/.test(str.substring(0, 100));
+};
+
 const normalizeImageUrl = (url: string): string => {
     if (!url) return '';
-    // If it's a long string without protocol, assume it's base64
-    if (url.length > 500 && !url.startsWith('http') && !url.startsWith('data:')) {
-        return `data:image/png;base64,${url}`;
-    }
-    return url;
+    const trimmed = url.trim();
+    if (trimmed.startsWith('http') || trimmed.startsWith('data:')) return trimmed;
+    if (isLikelyBase64(trimmed)) return `data:image/png;base64,${trimmed}`;
+    return trimmed; 
 };
 
-/**
- * Robust ID Extraction
- */
 const findTaskId = (obj: any): string | null => {
     if (!obj || typeof obj !== 'object') return null;
-    if (obj.id && typeof obj.id === 'string') return obj.id;
-    if (obj.task_id && typeof obj.task_id === 'string') return obj.task_id;
-    if (obj.data && typeof obj.data === 'string' && obj.data.length > 5) return obj.data;
-    return null;
+    return obj.id || obj.task_id || (obj.data && typeof obj.data === 'string' ? obj.data : null);
 };
 
-/**
- * Deep scan for image URLs or Base64 data in API response
- */
+const handleResponse = async (response: Response) => {
+    let result;
+    try {
+        result = await response.json();
+    } catch (e) {
+        if (!response.ok) throw new Error(`API Error (${response.status}): ${response.statusText}`);
+        throw new Error('Server returned non-JSON. Possible incorrect Endpoint.');
+    }
+
+    if (result && typeof result === 'object') {
+        if (result.code && result.message && ![0, 200, 'success'].includes(result.code)) {
+            throw new Error(result.message);
+        }
+        if (result.error) {
+            const msg = typeof result.error === 'string' ? result.error : result.error.message;
+            if (msg) throw new Error(msg);
+        }
+    }
+
+    if (!response.ok) throw new Error(result?.message || result?.error || `HTTP ${response.status}`);
+    return result;
+};
+
 const collectImageUrls = (obj: any): string[] => {
     let urls: string[] = [];
     if (!obj) return urls;
 
-    // Check common locations
-    if (typeof obj === 'string' && (obj.startsWith('http') || obj.length > 500)) {
-        urls.push(normalizeImageUrl(obj));
+    if (typeof obj === 'string') {
+        if (obj.startsWith('http') || isLikelyBase64(obj)) {
+            urls.push(normalizeImageUrl(obj));
+        }
     } else if (Array.isArray(obj)) {
         obj.forEach(item => {
             urls = [...urls, ...collectImageUrls(item)];
         });
     } else if (typeof obj === 'object') {
-        // Specific fields to check
-        const fields = ['url', 'result_url', 'image', 'b64_json', 'content'];
-        for (const field of fields) {
-            if (obj[field]) {
-                urls = [...urls, ...collectImageUrls(obj[field])];
-            }
+        const priorityFields = ['url', 'result_url', 'image', 'b64_json', 'content'];
+        for (const field of priorityFields) {
+            if (obj[field]) urls = [...urls, ...collectImageUrls(obj[field])];
         }
-        // Recursively check other objects but avoid too deep recursion
         for (const key in obj) {
-            if (!fields.includes(key) && typeof obj[key] === 'object') {
+            if (!priorityFields.includes(key) && typeof obj[key] === 'object') {
                 urls = [...urls, ...collectImageUrls(obj[key])];
             }
         }
     }
-    return [...new Set(urls)].filter(u => u.length > 10);
+    return [...new Set(urls)].filter(u => u.length > 20);
 };
 
 export const createImageGenerationTask = async (
-  baseUrl: string,
-  token: string,
-  prompt: string,
-  model: ImageModel,
-  options?: {
-    size?: string;
-    resolution?: string;
-    n?: number;
-  }
+    baseUrl: string,
+    token: string,
+    prompt: string,
+    model: ImageModel,
+    options?: { aspectRatio?: string; resolution?: string; n?: number; }
 ): Promise<string> => {
-  const url = getEndpoint(baseUrl, '/v1/images/generations?async=true');
-  const payload = {
-      model,
-      prompt,
-      n: options?.n || 1,
-      size: options?.size || "1:1",
-      response_format: "url",
-      image_size: options?.resolution || "1K"
-  };
+    const url = getEndpoint(baseUrl, '/v1/images/generations?async=true');
+    
+    // Banana 2 API Spec: aspect_ratio enum, image_size enum
+    const body: any = {
+        model,
+        prompt,
+        aspect_ratio: options?.aspectRatio || "1:1",
+        image_size: options?.resolution || "1K",
+        response_format: "url"
+    };
 
-  const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-  });
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        },
+        body: JSON.stringify(body)
+    });
 
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.message || 'API Error');
-  const taskId = findTaskId(result);
-  if (!taskId) throw new Error("No Task ID found");
-  return taskId;
+    const result = await handleResponse(response);
+    const taskId = findTaskId(result);
+    if (!taskId) throw new Error("No Task ID found in Response.");
+    return taskId;
 };
 
 export const createImageEditTask = async (
-  baseUrl: string,
-  token: string,
-  prompt: string,
-  model: ImageModel,
-  imageFile: File,
-  options?: {
-    aspect_ratio?: string; 
-    image_size?: string;   
-  }
+    baseUrl: string,
+    token: string,
+    prompt: string,
+    model: ImageModel,
+    imageFile: File,
+    options?: { aspect_ratio?: string; image_size?: string; }
 ): Promise<string> => {
-  const url = getEndpoint(baseUrl, '/v1/images/edits?async=true');
-  const formData = new FormData();
-  formData.append('model', model);
-  formData.append('prompt', prompt);
-  formData.append('image', imageFile);
-  formData.append('response_format', 'url');
-  if (options?.aspect_ratio) formData.append('aspect_ratio', options.aspect_ratio);
-  if (options?.image_size) formData.append('image_size', options.image_size);
+    const url = getEndpoint(baseUrl, '/v1/images/edits?async=true');
+    const formData = new FormData();
+    formData.append('model', model);
+    formData.append('prompt', prompt);
+    formData.append('image', imageFile);
+    if (options?.aspect_ratio) formData.append('aspect_ratio', options.aspect_ratio);
+    if (options?.image_size) formData.append('image_size', options.image_size);
 
-  const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}` },
-      body: formData
-  });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.message || 'Edit failed');
-  const taskId = findTaskId(result);
-  if (!taskId) throw new Error("No Task ID found");
-  return taskId;
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
+        body: formData
+    });
+    
+    const result = await handleResponse(response);
+    return findTaskId(result) || "edit-task-queued";
 };
 
 export const queryImageTask = async (
@@ -141,122 +157,88 @@ export const queryImageTask = async (
     taskId: string
 ): Promise<QueryImageResponse> => {
     const url = getEndpoint(baseUrl, `/v1/images/tasks/${taskId}`);
+    const response = await fetch(url, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
+    });
 
-    try {
-        const response = await fetch(url, {
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
+    const result = await handleResponse(response);
+    const data = result.data || result.task || result;
+    const statusRaw = (data.status || data.state || 'unknown').toLowerCase();
+    const allUrls = collectImageUrls(data);
+    
+    const isSuccess = ['success', 'succeeded', 'completed'].includes(statusRaw) || allUrls.length > 0;
 
-        const result = await response.json();
-        if (!response.ok) throw new Error(`Query failed: ${result.message}`);
-
-        // Handle inconsistent nesting
-        const data = result.data || result.task || result;
-        const statusRaw = (data.status || data.state || 'unknown').toLowerCase();
-        
-        // Use deep scanning to find all images
-        const allUrls = collectImageUrls(data);
-
-        return {
-            id: taskId,
-            status: allUrls.length > 0 ? 'success' : statusRaw,
-            result_url: allUrls[0],
-            result_urls: allUrls,
-            fail_reason: data.fail_reason || data.error
-        };
-    } catch (error: any) {
-        throw new Error(error.message || 'Query error');
-    }
+    return {
+        id: taskId,
+        status: isSuccess ? 'success' : statusRaw,
+        result_url: allUrls[0],
+        result_urls: allUrls,
+        fail_reason: data.fail_reason || data.error
+    };
 };
 
-/**
- * Conversion helper
- */
 const fileToDataURL = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = (error) => reject(error);
-  });
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = (error) => reject(error);
+    });
 };
 
-/**
- * 调用 nano-banana-pro-4k 模型，支持多图融合，返回 4 张 4K 图片 URL 或 base64
- */
 export const createNanoBananaPro4KTask = async (
-  baseUrl: string,
-  apiToken: string,
-  prompt: string,
-  files: File[]
+    baseUrl: string,
+    apiToken: string,
+    prompt: string,
+    files: File[],
+    options?: { aspectRatio?: string; resolution?: string; }
 ): Promise<string[]> => {
-  const imageParts = await Promise.all(
-    files.map(async (file) => ({
-      type: "image_url" as const,
-      image_url: { url: await fileToDataURL(file) }
-    }))
-  );
+    const imageParts = await Promise.all(
+        files.map(async (file) => ({
+            type: "image_url",
+            image_url: { url: await fileToDataURL(file) }
+        }))
+    );
 
-  const content = [
-    { type: "text" as const, text: prompt },
-    ...imageParts
-  ];
+    // Gemini 3 Pro Prompt Modification Rule: append parameters
+    let finalPrompt = prompt;
+    if (options?.aspectRatio) finalPrompt += `, ar-${options.aspectRatio}`;
+    if (options?.resolution) finalPrompt += `, ${options.resolution}`;
 
-  const payload = {
-    model: "nano-banana-pro-4k",
-    messages: [{ role: "user" as const, content }],
-    max_tokens: 2000 
-  };
+    const payload = {
+        model: "gemini-3-pro-image-preview", 
+        messages: [{ 
+            role: "user", 
+            content: [{ type: "text", text: finalPrompt }, ...imageParts] 
+        }],
+        max_tokens: 4096,
+        stream: false
+    };
 
-  const cleanBase = baseUrl.replace(/\/+$/, '');
-  const endpoint = cleanBase.endsWith('/v1')
-    ? `${cleanBase}/chat/completions`
-    : `${cleanBase}/v1/chat/completions`;
+    const endpoint = getEndpoint(baseUrl, '/v1/chat/completions');
+    const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${apiToken}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        },
+        body: JSON.stringify(payload)
+    });
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiToken}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(payload)
-  });
+    const result = await handleResponse(response);
+    const contentText = result?.choices?.[0]?.message?.content;
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`API Error (${response.status}): ${errorText}`);
-  }
+    if (!contentText) throw new Error("API content is empty.");
 
-  const result = await response.json();
-  const contentText = result?.choices?.[0]?.message?.content;
+    const collected = collectImageUrls(result);
+    if (collected.length > 0) return collected;
 
-  if (!contentText) {
-    throw new Error("API returned no content.");
-  }
-
-  // Support multiple formats: lines, JSON array, Markdown images
-  const lines = contentText.trim().split('\n').filter((line: string) => line.trim());
-  if (lines.length >= 4) {
-    return lines.slice(0, 4).map((l: string) => normalizeImageUrl(l.trim()));
-  }
-
-  try {
-    const parsed = JSON.parse(contentText);
-    if (Array.isArray(parsed) && parsed.length >= 4) {
-      return parsed.slice(0, 4).map(normalizeImageUrl);
-    }
-  } catch (e) {}
-
-  const markdownRegex = /!\[[^\]]*\]\(([^)]+)\)/g;
-  const matches = [...contentText.matchAll(markdownRegex)].map(m => m[1]);
-  if (matches.length >= 4) {
-    return matches.slice(0, 4).map(normalizeImageUrl);
-  }
-
-  // One more attempt at finding long base64 strings or URLs if they aren't explicitly split
-  const urls = collectImageUrls({ content: contentText });
-  if (urls.length >= 4) return urls.slice(0, 4);
-
-  throw new Error("无法解析 API 返回的 4 张图片，请检查响应格式。");
+    const mdMatches = [...contentText.matchAll(/!\[.*?\]\((.*?)\)/g)].map(m => m[1]);
+    const urlMatches = contentText.match(/(https?:\/\/[^\s"'\)\]]+)/g) || [];
+    const final = [...new Set([...mdMatches, ...urlMatches])].filter(u => u.length > 20);
+    
+    if (final.length === 0) throw new Error("No image URLs extracted from Chat response.");
+    return final.map(normalizeImageUrl);
 };
