@@ -17,10 +17,13 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onCreateCharacter, lan
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isExpanded, setIsExpanded] = useState(false);
   
-  // Clip mode state (preserved for functionality)
+  // Clip mode state
   const [isClipMode, setIsClipMode] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0); // Tracked for clipping only
+  const [currentTime, setCurrentTime] = useState(0); 
   const [duration, setDuration] = useState(0);
+
+  // Helper to determine if model is portrait, though grid container remains 16:9
+  const isPortrait = typeof task.model === 'string' && task.model.toUpperCase().includes('PORTRAIT');
 
   const t = {
     zh: {
@@ -70,7 +73,6 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onCreateCharacter, lan
   const handleCreateCharClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     setIsClipMode(!isClipMode);
-    // Pause video when entering clip mode to make selection easier
     if (!isClipMode && videoRef.current) {
         videoRef.current.pause();
     }
@@ -79,7 +81,6 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onCreateCharacter, lan
   const confirmCharacterCreation = (e: React.MouseEvent) => {
       e.stopPropagation();
       if (onCreateCharacter && task.apiId) {
-          // Use current time from state (updated by timeupdate listener)
           const start = Math.floor(currentTime);
           let end = start + 3;
           if (end > duration) {
@@ -96,33 +97,18 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onCreateCharacter, lan
       }
   };
 
-  // Basic listeners for Clip Mode functionality
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-
     const handleTimeUpdate = () => setCurrentTime(video.currentTime);
     const handleLoadedMetadata = () => setDuration(video.duration);
-
     video.addEventListener('timeupdate', handleTimeUpdate);
     video.addEventListener('loadedmetadata', handleLoadedMetadata);
-
     return () => {
       video.removeEventListener('timeupdate', handleTimeUpdate);
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
     };
   }, [task.videoUrl, isExpanded]); 
-
-  useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (isExpanded) setIsExpanded(false);
-        if (isClipMode) setIsClipMode(false);
-      }
-    };
-    window.addEventListener('keydown', handleEsc);
-    return () => window.removeEventListener('keydown', handleEsc);
-  }, [isExpanded, isClipMode]);
 
   return (
     <>
@@ -164,21 +150,20 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onCreateCharacter, lan
           </div>
         )}
 
+        {/* Container: Uniform 16:9 Aspect Ratio in Grid to prevent layout deformation. Fills screen when expanded. */}
         <div className={`relative flex items-center justify-center group overflow-hidden bg-black ${isExpanded ? 'h-full w-full rounded-[24px]' : 'aspect-video'}`}>
           {task.status === 'success' && (task.videoUrl || task.coverUrl) ? (
             <>
-              {/* Native Video Element */}
               <video 
                 ref={videoRef}
                 src={task.videoUrl} 
                 poster={task.coverUrl}
-                className={`object-contain ${isExpanded ? 'w-full h-full bg-black' : 'w-full h-full object-cover'}`}
+                className={`w-full h-full object-contain`}
                 controls
                 playsInline
                 preload="metadata"
               />
               
-              {/* Clip Mode Overlay - Only shows when actively clipping */}
               {isClipMode && (
                   <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/40 backdrop-blur-md animate-in fade-in duration-300 pointer-events-auto">
                       <div className="bg-white p-6 rounded-[24px] shadow-2xl flex flex-col items-center gap-4 max-w-[280px]">
@@ -190,48 +175,21 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onCreateCharacter, lan
                               {t.extract} <span className="text-[#1D1D1F] font-mono bg-[#F5F5F7] px-2 py-0.5 rounded ml-1 border border-gray-200">{formatTime(currentTime)}</span>
                           </p>
                           <div className="flex gap-3 w-full">
-                              <button 
-                                onClick={() => setIsClipMode(false)}
-                                className="flex-1 py-2.5 px-4 rounded-xl bg-[#F5F5F7] text-xs text-[#86868B] hover:bg-[#E5E5EA] transition-all font-bold"
-                              >
-                                {t.cancel}
-                              </button>
-                              <button 
-                                onClick={confirmCharacterCreation}
-                                className="flex-1 py-2.5 px-4 rounded-xl bg-[#007AFF] text-white text-xs hover:bg-[#0066CC] transition-all font-bold shadow-lg shadow-blue-500/20"
-                              >
-                                {t.create}
-                              </button>
+                              <button onClick={() => setIsClipMode(false)} className="flex-1 py-2.5 px-4 rounded-xl bg-[#F5F5F7] text-xs text-[#86868B] hover:bg-[#E5E5EA] transition-all font-bold">{t.cancel}</button>
+                              <button onClick={confirmCharacterCreation} className="flex-1 py-2.5 px-4 rounded-xl bg-[#007AFF] text-white text-xs hover:bg-[#0066CC] transition-all font-bold shadow-lg shadow-blue-500/20">{t.create}</button>
                           </div>
                       </div>
                   </div>
               )}
 
-              {/* Utility Buttons (Download, Expand) - Positioned nicely but not blocking controls */}
               <div className="absolute top-4 right-4 flex gap-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                   {!task.isCharacterAsset && onCreateCharacter && task.apiId && (
-                     <button 
-                       onClick={handleCreateCharClick}
-                       className={`p-2 rounded-full backdrop-blur-md transition-all ${isClipMode ? 'bg-[#007AFF] text-white shadow-lg' : 'bg-white/20 hover:bg-[#007AFF] text-white'}`}
-                       title={t.createChar}
-                     >
+                     <button onClick={handleCreateCharClick} className={`p-2 rounded-full backdrop-blur-md transition-all ${isClipMode ? 'bg-[#007AFF] text-white shadow-lg' : 'bg-white/20 hover:bg-[#007AFF] text-white'}`} title={t.createChar}>
                        <UserPlus size={16} />
                      </button>
                   )}
-                  <a 
-                    href={task.videoUrl} 
-                    target="_blank" 
-                    rel="noopener noreferrer" 
-                    className="p-2 bg-white/20 hover:bg-white/40 rounded-full text-white backdrop-blur-md transition-all"
-                    title="Download"
-                  >
-                      <Download size={16} />
-                  </a>
-                  <button 
-                    onClick={toggleExpand} 
-                    className="p-2 bg-white/20 hover:bg-white/40 rounded-full text-white backdrop-blur-md transition-all"
-                    title={isExpanded ? "Minimize" : "Maximize"}
-                  >
+                  <a href={task.videoUrl} target="_blank" rel="noopener noreferrer" className="p-2 bg-white/20 hover:bg-white/40 rounded-full text-white backdrop-blur-md transition-all" title="Download"><Download size={16} /></a>
+                  <button onClick={toggleExpand} className="p-2 bg-white/20 hover:bg-white/40 rounded-full text-white backdrop-blur-md transition-all" title={isExpanded ? "Minimize" : "Maximize"}>
                       {isExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
                   </button>
               </div>
@@ -243,17 +201,11 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onCreateCharacter, lan
             </div>
           ) : (
             <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50 relative">
-               {task.coverUrl && (
-                   <img src={task.coverUrl} className="absolute inset-0 w-full h-full object-cover opacity-20 blur-md scale-110" />
-               )}
+               {task.coverUrl && <img src={task.coverUrl} className="absolute inset-0 w-full h-full object-cover opacity-20 blur-md scale-110" />}
                <div className="z-10 flex flex-col items-center gap-5">
-                  <div className="relative">
-                    <Loader2 size={40} className="text-[#007AFF] animate-spin" />
-                  </div>
+                  <div className="relative"><Loader2 size={40} className="text-[#007AFF] animate-spin" /></div>
                   <div className="flex flex-col items-center">
-                    <span className="text-xs text-[#007AFF] font-bold tracking-[0.2em] animate-pulse uppercase mb-2">
-                        {task.status === 'queued' ? t.wait : t.gen}
-                    </span>
+                    <span className="text-xs text-[#007AFF] font-bold tracking-[0.2em] animate-pulse uppercase mb-2">{task.status === 'queued' ? t.wait : t.gen}</span>
                     <span className="text-[10px] font-mono text-[#86868B] bg-white/50 px-2 py-0.5 rounded-full">{Math.round(task.progress)}%</span>
                   </div>
                </div>
