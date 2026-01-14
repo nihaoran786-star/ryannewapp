@@ -11,7 +11,7 @@ import {
   ImageTask 
 } from '../types';
 import { 
-  createImageGenerationTask, createImageEditTask, queryImageTask 
+  createImageGenerationTask, createImageEditTask, queryImageTask, createNanoBananaPro4KTask 
 } from '../services/imageService';
 import { useGlobal } from '../context/GlobalContext';
 
@@ -35,9 +35,11 @@ export const ImageGenPage = () => {
   
   // --- Form States ---
   const [prompt, setPrompt] = useState('');
-  const [selectedModel] = useState<ImageModel>(ImageModel.NANO_BANANA_2);
+  const [selectedModel, setSelectedModel] = useState<ImageModel>(ImageModel.NANO_BANANA_2);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [selectedImages, setSelectedImages] = useState<File[]>([]);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [aspectRatio, setAspectRatio] = useState('1:1');
   const [resolution, setResolution] = useState('1K');
   
@@ -126,10 +128,29 @@ export const ImageGenPage = () => {
       finally { setIsDownloading(null); }
   };
 
+  const handleFileSelection = (files: FileList | File[]) => {
+      const fileArr = Array.from(files);
+      if (selectedModel === ImageModel.NANO_BANANA_PRO_4K) {
+          const newFiles = [...selectedImages, ...fileArr].slice(0, 10);
+          setSelectedImages(newFiles);
+          setImagePreviews(newFiles.map(f => URL.createObjectURL(f)));
+      } else {
+          const file = fileArr[0];
+          setSelectedImage(file);
+          setImagePreview(URL.createObjectURL(file));
+      }
+  };
+
   const handleSubmit = async () => {
     if (!activeChannel?.apiToken) { setError(t('missingToken')); return; }
     if (!prompt.trim()) { setError(lang === 'zh' ? '请输入提示词' : 'Prompt required'); return; }
-    if (activeTab === 'img2img' && !selectedImage) { setError(t('noImageSelected')); return; }
+    if (activeTab === 'img2img') {
+        if (selectedModel === ImageModel.NANO_BANANA_PRO_4K && selectedImages.length === 0) {
+            setError(t('noImageSelected')); return;
+        } else if (selectedModel !== ImageModel.NANO_BANANA_PRO_4K && !selectedImage) {
+            setError(t('noImageSelected')); return;
+        }
+    }
 
     setIsSubmitting(true);
     setError(null);
@@ -143,26 +164,37 @@ export const ImageGenPage = () => {
         createdAt: Date.now(),
         channelId: activeChannel.id,
         type: activeTab,
-        sourceImagePreview: activeTab === 'img2img' ? imagePreview || undefined : undefined
+        sourceImagePreview: activeTab === 'img2img' ? (selectedModel === ImageModel.NANO_BANANA_PRO_4K ? imagePreviews[0] : imagePreview || undefined) : undefined
     };
 
     setTasks(prev => [newTask, ...prev]);
 
     try {
-        let apiId = '';
-        if (activeTab === 'txt2img') {
-            apiId = await createImageGenerationTask(
-                activeChannel.baseUrl, activeChannel.apiToken, 
-                prompt, selectedModel, { size: aspectRatio, resolution, n: 1 }
+        if (selectedModel === ImageModel.NANO_BANANA_PRO_4K) {
+            const filesToUpload = activeTab === 'img2img' ? selectedImages : [];
+            const results = await createNanoBananaPro4KTask(
+                activeChannel.baseUrl, 
+                activeChannel.apiToken, 
+                prompt, 
+                filesToUpload
             );
+            setTasks(prev => prev.map(t => t.id === localId ? { ...t, status: 'success', resultUrl: results[0], resultUrls: results } : t));
         } else {
-            apiId = await createImageEditTask(
-                activeChannel.baseUrl, activeChannel.apiToken,
-                prompt, selectedModel, selectedImage!, 
-                { aspect_ratio: aspectRatio, image_size: resolution }
-            );
+            let apiId = '';
+            if (activeTab === 'txt2img') {
+                apiId = await createImageGenerationTask(
+                    activeChannel.baseUrl, activeChannel.apiToken, 
+                    prompt, selectedModel, { size: aspectRatio, resolution, n: 1 }
+                );
+            } else {
+                apiId = await createImageEditTask(
+                    activeChannel.baseUrl, activeChannel.apiToken,
+                    prompt, selectedModel, selectedImage!, 
+                    { aspect_ratio: aspectRatio, image_size: resolution }
+                );
+            }
+            setTasks(prev => prev.map(t => t.id === localId ? { ...t, apiId, status: 'processing' } : t));
         }
-        setTasks(prev => prev.map(t => t.id === localId ? { ...t, apiId, status: 'processing' } : t));
     } catch (err: any) {
         setTasks(prev => prev.map(t => t.id === localId ? { ...t, status: 'failed', errorMessage: err.message } : t));
         setError(err.message || 'Request failed');
@@ -199,21 +231,18 @@ export const ImageGenPage = () => {
     const url = e.dataTransfer.getData('text/image-url');
     if (url) {
       setActiveTab('img2img');
-      setImagePreview(url);
       try {
         const file = await urlToFile(url, `ref_${Date.now()}.png`, 'image/png');
-        setSelectedImage(file);
+        handleFileSelection([file]);
       } catch (err) {
         console.error("Failed to convert dragged URL to file:", err);
         setError("Failed to process dragged image. Please try uploading manually.");
       }
     } else {
-      // Handle native file drop
       const files = e.dataTransfer.files;
-      if (files && files[0]) {
+      if (files && files.length > 0) {
         setActiveTab('img2img');
-        setSelectedImage(files[0]);
-        setImagePreview(URL.createObjectURL(files[0]));
+        handleFileSelection(files);
       }
     }
   };
@@ -342,9 +371,26 @@ export const ImageGenPage = () => {
                     </div>
 
                     <div className="space-y-8">
-                        <div className="p-5 bg-indigo-50 rounded-2xl border border-indigo-100 flex items-center justify-between">
-                            <span className="text-[11px] font-black text-indigo-500 uppercase tracking-widest">{t('model')}</span>
-                            <span className="text-sm font-black text-indigo-900">BANANA 2.0</span>
+                        <div className="space-y-3">
+                            <label className="text-[11px] font-black text-gray-400 uppercase tracking-widest px-1">{t('model')}</label>
+                            <div className="relative">
+                                <select 
+                                    value={selectedModel}
+                                    onChange={e => {
+                                        const model = e.target.value as ImageModel;
+                                        setSelectedModel(model);
+                                        // Clear incompatible files if switching
+                                        if (model !== ImageModel.NANO_BANANA_PRO_4K) {
+                                            setSelectedImages([]);
+                                            setImagePreviews([]);
+                                        }
+                                    }}
+                                    className="w-full bg-[#F5F5F7] border-none rounded-2xl px-5 py-4 text-xs font-black text-[#1D1D1F] focus:ring-2 focus:ring-indigo-500/20 appearance-none cursor-pointer"
+                                >
+                                    {IMAGE_MODEL_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                                </select>
+                                <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                            </div>
                         </div>
 
                         {activeTab === 'img2img' && (
@@ -355,25 +401,38 @@ export const ImageGenPage = () => {
                                     onDragOver={handleDragOver}
                                     onDragLeave={handleDragLeave}
                                     onDrop={handleDrop}
-                                    className={`group aspect-video border-2 border-dashed rounded-[28px] flex flex-col items-center justify-center cursor-pointer transition-all relative overflow-hidden
+                                    className={`group border-2 border-dashed rounded-[28px] flex flex-col items-center justify-center cursor-pointer transition-all relative overflow-hidden
                                         ${isDragOver 
                                             ? 'border-indigo-600 bg-indigo-50 scale-[1.02] shadow-lg ring-4 ring-indigo-500/10' 
-                                            : 'border-gray-200 bg-[#FBFBFB] hover:border-indigo-400 hover:bg-indigo-50/20'}`}
+                                            : 'border-gray-200 bg-[#FBFBFB] hover:border-indigo-400 hover:bg-indigo-50/20'}
+                                        ${selectedModel === ImageModel.NANO_BANANA_PRO_4K ? 'min-h-[160px]' : 'aspect-video'}`}
                                 >
-                                    <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={e => {
-                                        if (e.target.files?.[0]) {
-                                            setSelectedImage(e.target.files[0]);
-                                            setImagePreview(URL.createObjectURL(e.target.files[0]));
-                                        }
+                                    <input ref={fileInputRef} type="file" multiple={selectedModel === ImageModel.NANO_BANANA_PRO_4K} accept="image/*" className="hidden" onChange={e => {
+                                        if (e.target.files) handleFileSelection(e.target.files);
                                     }} />
-                                    {imagePreview ? (
-                                        <>
-                                            <img src={imagePreview} className="absolute inset-0 w-full h-full object-cover transition-transform group-hover:scale-105" />
-                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white">
-                                                <RefreshCw size={24} className="mb-2" />
-                                                <span className="text-[10px] font-black uppercase tracking-widest">{lang === 'zh' ? '更换图片' : 'Change Image'}</span>
-                                            </div>
-                                        </>
+                                    
+                                    {(selectedModel === ImageModel.NANO_BANANA_PRO_4K ? imagePreviews.length > 0 : !!imagePreview) ? (
+                                        <div className="w-full h-full flex flex-wrap gap-1 p-2 justify-center content-center relative">
+                                            {selectedModel === ImageModel.NANO_BANANA_PRO_4K ? (
+                                                <>
+                                                    {imagePreviews.map((src, idx) => (
+                                                        <img key={idx} src={src} className="w-12 h-12 object-cover rounded-md shadow-sm border border-white" />
+                                                    ))}
+                                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white">
+                                                        <Plus size={24} className="mb-2" />
+                                                        <span className="text-[8px] font-black uppercase tracking-widest">{lang === 'zh' ? '添加更多' : 'Add More'} ({imagePreviews.length}/10)</span>
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <img src={imagePreview!} className="absolute inset-0 w-full h-full object-cover transition-transform group-hover:scale-105" />
+                                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white">
+                                                        <RefreshCw size={24} className="mb-2" />
+                                                        <span className="text-[10px] font-black uppercase tracking-widest">{lang === 'zh' ? '更换图片' : 'Change Image'}</span>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
                                     ) : (
                                         <div className="text-center animate-in fade-in zoom-in duration-300">
                                             <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center mx-auto mb-3 shadow-sm group-hover:scale-110 transition-transform">
@@ -383,6 +442,14 @@ export const ImageGenPage = () => {
                                         </div>
                                     )}
                                 </div>
+                                {selectedModel === ImageModel.NANO_BANANA_PRO_4K && selectedImages.length > 0 && (
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); setSelectedImages([]); setImagePreviews([]); }}
+                                        className="text-[10px] text-red-400 hover:text-red-500 font-bold transition-colors ml-1 uppercase tracking-widest"
+                                    >
+                                        {lang === 'zh' ? '清空已选' : 'Clear All'}
+                                    </button>
+                                )}
                             </div>
                         )}
 
@@ -393,7 +460,8 @@ export const ImageGenPage = () => {
                                     <select 
                                         value={aspectRatio}
                                         onChange={e => setAspectRatio(e.target.value)}
-                                        className="w-full bg-[#F5F5F7] border-none rounded-2xl px-5 py-4 text-xs font-black text-[#1D1D1F] focus:ring-2 focus:ring-indigo-500/20 appearance-none cursor-pointer"
+                                        disabled={selectedModel === ImageModel.NANO_BANANA_PRO_4K}
+                                        className="w-full bg-[#F5F5F7] border-none rounded-2xl px-5 py-4 text-xs font-black text-[#1D1D1F] focus:ring-2 focus:ring-indigo-500/20 appearance-none cursor-pointer disabled:opacity-50"
                                     >
                                         {['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'].map(r => <option key={r} value={r}>{r}</option>)}
                                     </select>
@@ -406,7 +474,8 @@ export const ImageGenPage = () => {
                                     <select 
                                         value={resolution}
                                         onChange={e => setResolution(e.target.value)}
-                                        className="w-full bg-[#F5F5F7] border-none rounded-2xl px-5 py-4 text-xs font-black text-[#1D1D1F] focus:ring-2 focus:ring-indigo-500/20 appearance-none cursor-pointer"
+                                        disabled={selectedModel === ImageModel.NANO_BANANA_PRO_4K}
+                                        className="w-full bg-[#F5F5F7] border-none rounded-2xl px-5 py-4 text-xs font-black text-[#1D1D1F] focus:ring-2 focus:ring-indigo-500/20 appearance-none cursor-pointer disabled:opacity-50"
                                     >
                                         {['1K', '2K', '4K'].map(q => <option key={q} value={q}>{q}</option>)}
                                     </select>
@@ -513,7 +582,7 @@ export const ImageGenPage = () => {
                                             <div className="w-16 h-16 border-4 border-indigo-50 border-t-indigo-600 rounded-full animate-spin" />
                                             <div className="flex flex-col items-center gap-1">
                                                 <span className="text-[11px] font-black text-indigo-400 uppercase tracking-[0.3em]">{t('gen')}</span>
-                                                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Banana 2 Processing</span>
+                                                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Processing...</span>
                                             </div>
                                         </div>
                                     )}
