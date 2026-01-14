@@ -1,5 +1,4 @@
 
-
 import { VolcSettings, VolcModel, QueryTaskResponse } from '../types';
 
 /**
@@ -174,34 +173,35 @@ Output JSON ONLY:
   "synopsis": "Outline"
 }`,
 
-    // Stage 2: Structure & Visuals
+    // Stage 2: Structure & Visuals (Enhanced for @Ref and Shot breakdown)
     ANALYSIS_STAGE_2: `Role: Director.
-Task: Breakdown script.
-Output JSON ONLY:
+Task: Breakdown script into a detailed shot list. 
+Requirements:
+1. Break down scenes into granular shots (e.g., establishing -> medium -> close-up). 
+2. Identify and list all Characters, Scenes (Locations), and Props.
+3. In 'visual_prompt', use @CharacterName, @LocationName, @PropName tags to reference assets.
+4. Output JSON ONLY.
+
+Output Format:
 {
-  "characters": [
-    { "name": "Name", "bio": "Bio", "tags": ["Trait"] }
-  ],
-  "environment_visuals": [
-    { "name": "Loc", "description": "Visuals" }
-  ],
-  "props": [
-    { "name": "Item", "description": "Visuals" }
-  ],
+  "characters": [{ "name": "Name", "bio": "Visual Bio" }],
+  "environment_visuals": [{ "name": "Loc", "description": "Visuals" }],
+  "props": [{ "name": "Item", "description": "Visuals" }],
   "scenes": [
     {
       "scene_id": 1,
-      "header": "INT. LOC",
-      "summary": "Summary",
-      "characters_present": ["Name"],
-      "visual_prompt": "Prompt"
+      "header": "INT. LAB",
+      "visual_prompt": "Wide shot of @Lab, @Scientist holding @Beaker...",
+      "shots": [
+         { "text": "The scientist looks at the beaker.", "visual_prompt": "Close up of @Scientist looking at @Beaker..." }
+      ]
     }
   ]
 }`,
 
     // Stage 3: Deep QC
     ANALYSIS_STAGE_3: `Role: Analyst.
-Task: Analyze script.
+Task: Analyze script logic and pacing.
 Output JSON ONLY:
 {
   "analytics": [
@@ -209,6 +209,38 @@ Output JSON ONLY:
   ],
   "logic_issues": [
     { "scene_ref": [1], "issue_description": "Issue", "severity": "Medium" }
+  ]
+}`,
+
+    // Stage 4: Director Console Shot Analysis (Strict 4-Angle)
+    SHOT_ANALYSIS: `Role: Cinematographer.
+Task: Analyze the shot and provide exactly 4 camera angle variations.
+Output JSON ONLY:
+{
+  "narrative_description": "Poetic description of the moment.",
+  "emotion_keywords": ["keyword1", "keyword2"],
+  "lighting_suggestion": "Lighting style.",
+  "recommended_angles": [
+    { 
+      "name": "Wide Shot", 
+      "prompt_modifier": "wide shot, establishing view, full body, contextual environment",
+      "reason": "To establish the setting." 
+    },
+    { 
+      "name": "Medium Shot", 
+      "prompt_modifier": "medium shot, waist up, interaction focus",
+      "reason": "To show action/dialogue." 
+    },
+    { 
+      "name": "Close Up", 
+      "prompt_modifier": "close up, detailed face, emotional intensity, shallow depth of field",
+      "reason": "To emphasize emotion." 
+    },
+    { 
+      "name": "Dynamic Angle", 
+      "prompt_modifier": "dutch angle/low angle, dramatic perspective, motion blur",
+      "reason": "To add tension or style." 
+    }
   ]
 }`
 };

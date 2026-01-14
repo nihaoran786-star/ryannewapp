@@ -1,12 +1,11 @@
 
-
 import React, { useState } from 'react';
 import * as ReactRouterDOM from 'react-router-dom';
 import { 
   FolderKanban, Database, Film, UserRoundSearch, LogOut, Settings, 
   Server, X, Globe, Key, PlusCircle, Trash2, LayoutTemplate, 
   Flame, BrainCircuit, Sparkle, Clapperboard, Check, Palette,
-  PanelLeftClose, PanelLeftOpen
+  PanelLeftClose, PanelLeftOpen, Languages
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
 import { Channel } from '../types';
@@ -143,26 +142,8 @@ export const Layout = () => {
         </div>
       </aside>
 
-      {/* Main Content Area */}
+      {/* Main Content Area - Full immersive */}
       <main className="flex-1 flex flex-col overflow-hidden relative">
-        <header className="h-16 border-b border-[rgba(0,0,0,0.05)] bg-white/70 backdrop-blur-xl flex items-center justify-between px-8 shrink-0 z-40 sticky top-0">
-          <div>
-            <h2 className="text-base font-bold text-[#1D1D1F] tracking-tight uppercase">
-              {currentPath === 'director' ? (lang === 'zh' ? '创作中心' : 'Studio Hub') : (t(currentPath as any) || currentPath)}
-            </h2>
-          </div>
-          <div className="flex items-center gap-4">
-             <div className="flex items-center bg-[#E5E5EA] p-1 rounded-lg">
-                <button onClick={() => setLang('zh')} className={`px-3 py-1 text-[11px] font-bold rounded-md transition-all shadow-sm ${lang === 'zh' ? 'bg-white text-[#1D1D1F]' : 'text-[#86868B] shadow-none hover:text-[#1D1D1F]'}`}>CN</button>
-                <button onClick={() => setLang('en')} className={`px-3 py-1 text-[11px] font-bold rounded-md transition-all shadow-sm ${lang === 'en' ? 'bg-white text-[#1D1D1F]' : 'text-[#86868B] shadow-none hover:text-[#1D1D1F]'}`}>EN</button>
-             </div>
-             <div className="h-6 w-[1px] bg-[#E5E5EA] mx-2" />
-             <button onClick={() => setShowSettings(true)} className="bg-white hover:bg-[#F5F5F7] text-[#1D1D1F] px-4 py-2 rounded-full text-xs font-semibold shadow-sm border border-[rgba(0,0,0,0.04)] transition-all active:scale-95 flex items-center gap-2">
-                <Server size={14} className="text-[#007AFF]" />
-                {t('channelSettings')}
-             </button>
-          </div>
-        </header>
         <Outlet />
       </main>
 
@@ -180,6 +161,18 @@ export const Layout = () => {
             </div>
             
             <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
+
+              {/* Language Settings (Moved from Header) */}
+              <div className="flex items-center justify-between bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
+                  <div className="flex items-center gap-3">
+                      <div className="p-1.5 bg-gray-100 rounded-lg"><Languages className="text-gray-500 w-4 h-4" /></div>
+                      <span className="text-sm font-bold text-[#1D1D1F]">{lang === 'zh' ? '系统语言' : 'System Language'}</span>
+                  </div>
+                  <div className="flex items-center bg-[#F5F5F7] p-1 rounded-lg">
+                    <button onClick={() => setLang('zh')} className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${lang === 'zh' ? 'bg-white text-[#1D1D1F] shadow-sm' : 'text-[#86868B] hover:text-[#1D1D1F]'}`}>中文</button>
+                    <button onClick={() => setLang('en')} className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${lang === 'en' ? 'bg-white text-[#1D1D1F] shadow-sm' : 'text-[#86868B] hover:text-[#1D1D1F]'}`}>English</button>
+                  </div>
+              </div>
               
               {/* Volc Settings Block */}
               <div className="bg-gradient-to-br from-orange-50 to-white rounded-[24px] p-6 border border-orange-100/50 shadow-sm">

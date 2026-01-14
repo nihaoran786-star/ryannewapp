@@ -1,15 +1,14 @@
 
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   FileText, Plus, Save, Upload, PenTool, Layout, 
   BarChart, Mic, ChevronRight, ChevronLeft, Search, 
   Sparkles, MoreHorizontal, User, BookOpen, Loader2,
   X, Wand2, AlignLeft, Scissors, Minimize2, BrainCircuit, ArrowRight,
-  AlertTriangle, CheckCircle2, Film, Lightbulb, LayoutTemplate
+  AlertTriangle, CheckCircle2, Film, Lightbulb, LayoutTemplate, Zap
 } from 'lucide-react';
 import { ScriptProject, ScriptScene, ScriptCharacter, ScriptLine, LogicIssue } from '../types';
-import { parseScript, extractScenes, extractCharacters, performDeepScriptAnalysis } from '../services/scriptUtils';
+import { parseScript, extractScenes, extractCharacters } from '../services/scriptUtils';
 import { useGlobal } from '../context/GlobalContext';
 import { callVolcChatApi, PROMPTS } from '../services/volcEngineService';
 import * as ReactRouterDOM from 'react-router-dom';
@@ -23,7 +22,7 @@ interface ScriptEditorProps {
 }
 
 export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack }) => {
-  const { volcSettings, t, lang } = useGlobal();
+  const { volcSettings, t, lang, analysisState, triggerBackgroundAnalysis } = useGlobal();
   const navigate = useNavigate();
   const [projects, setProjects] = useState<ScriptProject[]>([]);
   const [editorContent, setEditorContent] = useState('');
@@ -34,9 +33,6 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack })
   const [showRightPanel, setShowRightPanel] = useState(true);
   const [analyzeMode, setAnalyzeMode] = useState(false);
   const [isAiProcessing, setIsAiProcessing] = useState(false);
-  const [isDeepAnalyzing, setIsDeepAnalyzing] = useState(false);
-  const [analysisStep, setAnalysisStep] = useState(0); // 0=Idle, 1=Macro, 2=Structure, 3=QC
-  const [analysisMsg, setAnalysisMsg] = useState('');
   const [hasAnalyzed, setHasAnalyzed] = useState(false);
 
   // Floating Toolbar State
@@ -49,19 +45,31 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack })
   const scenes = useMemo(() => extractScenes(parsedLines), [parsedLines]);
   const characters = useMemo(() => extractCharacters(parsedLines), [parsedLines]);
 
+  // Check if *this* project is currently analyzing in the background
+  const isThisProjectAnalyzing = analysisState.isAnalyzing && analysisState.projectId === projectId;
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Initialization
   useEffect(() => {
-    const saved = localStorage.getItem('sora_script_projects');
-    if (saved) {
-      setProjects(JSON.parse(saved));
+    const loadProjects = () => {
+        const saved = localStorage.getItem('sora_script_projects');
+        if (saved) {
+            setProjects(JSON.parse(saved));
+        }
+    };
+    
+    loadProjects();
+    
+    // If analysis finished while we were looking, reload to get new data
+    if (analysisState.step === 4 && !analysisState.isAnalyzing) {
+        loadProjects();
     }
-  }, []);
+  }, [analysisState.isAnalyzing, analysisState.step]);
 
   useEffect(() => {
       if (activeProject) {
-          setEditorContent(activeProject.content);
+          if (!editorContent) setEditorContent(activeProject.content); // Only set if empty to avoid overwriting typing
           setProjectTitle(activeProject.title);
           // Check if analysis data exists to enable the storyboard button
           if (activeProject.genre && activeProject.genre.length > 0) {
@@ -115,46 +123,18 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack })
 
   // Phase 1: Deep Analysis Only (Stays on Page)
   const handleDeepAnalysis = async () => {
-    if (!projectId) return;
-    setIsDeepAnalyzing(true);
-    setAnalysisStep(1);
+    if (!projectId || isThisProjectAnalyzing) return;
     
+    // Force save before analysis
     const updatedProjects = projects.map(p => 
         p.id === projectId ? { ...p, content: editorContent, title: projectTitle } : p
     );
     localStorage.setItem('sora_script_projects', JSON.stringify(updatedProjects));
+    setProjects(updatedProjects);
 
-    try {
-        const { projectUpdates, storyboard } = await performDeepScriptAnalysis(
-            editorContent, 
-            volcSettings, 
-            (stage, msg) => {
-                setAnalysisStep(stage);
-                setAnalysisMsg(msg);
-            }
-        );
-        
-        const finalProjects = updatedProjects.map(p => 
-            p.id === projectId ? { ...p, ...projectUpdates, storyboard } : p
-        );
-        localStorage.setItem('sora_script_projects', JSON.stringify(finalProjects));
-        setProjects(finalProjects);
-
-        setAnalysisStep(4);
-        setAnalysisMsg("Analysis Complete!");
-        setHasAnalyzed(true);
-        setShowRightPanel(true); // Auto-open the analysis panel
-
-        setTimeout(() => {
-            setIsDeepAnalyzing(false);
-            setAnalysisStep(0);
-        }, 1500);
-
-    } catch (e) {
-        alert("Analysis failed. Please check your settings.");
-        setIsDeepAnalyzing(false);
-        setAnalysisStep(0);
-    }
+    // Trigger Global Background Analysis
+    triggerBackgroundAnalysis(projectId, editorContent);
+    setShowRightPanel(true);
   };
 
   // Navigation to Storyboard
@@ -192,7 +172,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack })
           <div className="space-y-6">
               {/* Report Header */}
               {activeProject.genre && activeProject.genre.length > 0 && (
-                  <div className="bg-gradient-to-r from-purple-50 to-white p-4 rounded-xl border border-purple-100">
+                  <div className="bg-gradient-to-r from-purple-50 to-white p-4 rounded-xl border border-purple-100 animate-in slide-in-from-top-2">
                       <div className="flex items-center gap-2 mb-2">
                           <Film size={14} className="text-purple-600" />
                           <span className="text-[10px] font-bold text-purple-600 uppercase tracking-widest">{lang === 'zh' ? '类型与题材' : 'GENRE'}</span>
@@ -212,7 +192,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack })
 
               {/* Logic Issues */}
               {activeProject.logicIssues && activeProject.logicIssues.length > 0 && (
-                  <div className="bg-red-50/50 p-4 rounded-xl border border-red-100">
+                  <div className="bg-red-50/50 p-4 rounded-xl border border-red-100 animate-in slide-in-from-top-4">
                        <div className="flex items-center gap-2 mb-3">
                           <AlertTriangle size={14} className="text-red-500" />
                           <span className="text-[10px] font-bold text-red-500 uppercase tracking-widest">{lang === 'zh' ? '逻辑与一致性' : 'LOGIC ISSUES'}</span>
@@ -239,7 +219,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack })
 
               {/* Sentiment Chart */}
               {(activeProject.scenes && activeProject.scenes.length > 1) && (
-                <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+                <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 animate-in slide-in-from-top-6">
                     <div className="flex items-center justify-between mb-2">
                         <h4 className="text-[10px] font-bold text-[#86868B] uppercase tracking-wider flex items-center gap-1">
                             <BarChart size={12} /> {t('emotionalArc')}
@@ -296,6 +276,19 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack })
           </div>
       );
   };
+
+  // --- Neural Pulse Animation Component ---
+  const NeuralPulse = ({ message }: { message: string }) => (
+      <div className="flex items-center gap-3 px-4 py-1.5 bg-black/5 rounded-full border border-black/5 shadow-inner">
+          <div className="relative w-4 h-4 flex items-center justify-center">
+              <div className="absolute inset-0 bg-purple-500/30 rounded-full animate-ping" />
+              <div className="relative bg-purple-600 rounded-full w-2.5 h-2.5 shadow-[0_0_10px_rgba(147,51,234,0.5)] animate-pulse" />
+          </div>
+          <span className="text-xs font-bold text-purple-700 animate-pulse bg-gradient-to-r from-purple-600 to-blue-500 bg-clip-text text-transparent">
+              {message}
+          </span>
+      </div>
+  );
 
   if (!projectId) return <div className="flex items-center justify-center h-full text-gray-400"><p>{t('pleaseSelectProject')}</p></div>;
 
@@ -386,38 +379,25 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack })
               </div>
               <div className="flex items-center gap-2">
                   
-                  {/* Button 1: Deep Analysis */}
-                  <button 
-                     onClick={handleDeepAnalysis}
-                     disabled={isDeepAnalyzing}
-                     className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm 
-                        ${isDeepAnalyzing 
-                            ? 'bg-gray-100 text-gray-500 w-48 justify-center cursor-wait' 
-                            : 'bg-white hover:bg-gray-50 text-[#1D1D1F] border border-gray-200'}`}
-                  >
-                      {isDeepAnalyzing ? (
-                          <>
-                            <Loader2 size={14} className="animate-spin" />
-                            <span>
-                                {analysisStep === 1 ? '1/3 Macro...' : 
-                                 analysisStep === 2 ? '2/3 Structure...' : 
-                                 analysisStep === 3 ? '3/3 Deep QC...' : 'Finishing...'}
-                            </span>
-                          </>
-                      ) : (
-                          <>
-                             <BrainCircuit size={14} className="text-purple-600" />
-                             {lang === 'zh' ? '深度分析' : 'Deep Analysis'}
-                          </>
-                      )}
-                  </button>
+                  {/* Dynamic Analysis Status / Button */}
+                  {isThisProjectAnalyzing ? (
+                      <NeuralPulse message={analysisState.message} />
+                  ) : (
+                      <button 
+                         onClick={handleDeepAnalysis}
+                         className="flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm bg-white hover:bg-purple-50 text-[#1D1D1F] hover:text-purple-600 border border-gray-200 hover:border-purple-200"
+                      >
+                         <BrainCircuit size={14} className="text-purple-600" />
+                         {lang === 'zh' ? '深度分析' : 'Deep Analysis'}
+                      </button>
+                  )}
 
-                  {/* Button 2: Generate Storyboard (Navigates) */}
+                  {/* Generate Storyboard (Navigates) */}
                   <button 
                     onClick={handleGoToStoryboard}
-                    disabled={isDeepAnalyzing}
+                    disabled={isThisProjectAnalyzing}
                     className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm 
-                        ${!hasAnalyzed 
+                        ${!hasAnalyzed || isThisProjectAnalyzing
                             ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
                             : 'bg-gradient-to-r from-[#007AFF] to-blue-600 text-white hover:shadow-blue-500/30 active:scale-95'}`}
                   >
@@ -467,7 +447,23 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({ projectId, onBack })
                       </div>
                   ) : (
                       <div className="max-w-2xl mx-auto bg-white min-h-[800px] shadow-apple-card border border-gray-100 p-16 relative">
-                          <div className="absolute top-0 right-0 p-4 opacity-20 pointer-events-none"><FileText size={48} /></div>
+                          {isThisProjectAnalyzing ? (
+                               <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 backdrop-blur-sm z-10 gap-6">
+                                   <div className="relative">
+                                       <div className="w-20 h-20 rounded-full border-4 border-purple-100 animate-[spin_3s_linear_infinite]" />
+                                       <div className="absolute inset-0 border-4 border-t-purple-500 rounded-full animate-spin" />
+                                       <div className="absolute inset-4 bg-purple-50 rounded-full flex items-center justify-center animate-pulse">
+                                           <BrainCircuit className="text-purple-500 w-8 h-8" />
+                                       </div>
+                                   </div>
+                                   <div className="text-center">
+                                       <p className="text-sm font-bold text-[#1D1D1F]">{analysisState.message}</p>
+                                       <p className="text-xs text-gray-400 mt-1">Reading script structure...</p>
+                                   </div>
+                               </div>
+                          ) : (
+                              <div className="absolute top-0 right-0 p-4 opacity-20 pointer-events-none"><FileText size={48} /></div>
+                          )}
                           {parsedLines.map((line, idx) => renderScriptLine(line, idx))}
                       </div>
                   )}

@@ -1,7 +1,7 @@
 
-
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
-import { Channel, VolcSettings } from '../types';
+import { Channel, VolcSettings, ScriptProject } from '../types';
+import { performDeepScriptAnalysis } from '../services/scriptUtils';
 
 export type Lang = 'zh' | 'en';
 
@@ -209,6 +209,13 @@ const locales = {
   }
 };
 
+interface AnalysisState {
+  isAnalyzing: boolean;
+  projectId: string | null;
+  step: number; // 0=Idle, 1=Macro, 2=Structure, 3=QC, 4=Complete
+  message: string;
+}
+
 interface GlobalContextType {
   lang: Lang;
   setLang: (lang: Lang) => void;
@@ -224,6 +231,9 @@ interface GlobalContextType {
   setShowSettings: (show: boolean) => void;
   volcSettings: VolcSettings;
   setVolcSettings: (settings: VolcSettings) => void;
+  // Analysis
+  analysisState: AnalysisState;
+  triggerBackgroundAnalysis: (projectId: string, content: string) => Promise<void>;
 }
 
 const GlobalContext = createContext<GlobalContextType | undefined>(undefined);
@@ -244,6 +254,14 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [volcSettings, setVolcSettings] = useState<VolcSettings>(() => {
       const saved = localStorage.getItem('sora_volc_settings');
       return saved ? JSON.parse(saved) : { apiKey: '', model: '', maxTokens: 8192 };
+  });
+
+  // Background Analysis State
+  const [analysisState, setAnalysisState] = useState<AnalysisState>({
+      isAnalyzing: false,
+      projectId: null,
+      step: 0,
+      message: ''
   });
 
   const t = (key: keyof typeof locales['zh']) => locales[lang][key] || key;
@@ -276,13 +294,50 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateChannel = (id: string, updates: Partial<Channel>) => { setChannels(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c)); };
   const deleteChannel = (id: string) => { if (channels.length <= 1) return; const updated = channels.filter(c => c.id !== id); setChannels(updated); if (activeChannelId === id) setActiveChannelId(updated[0].id); };
 
+  // Background Analysis Function
+  const triggerBackgroundAnalysis = async (projectId: string, content: string) => {
+      if (analysisState.isAnalyzing) return;
+      
+      setAnalysisState({ isAnalyzing: true, projectId, step: 1, message: 'Starting deep analysis...' });
+
+      try {
+          // Perform the heavy lifting
+          const { projectUpdates, storyboard } = await performDeepScriptAnalysis(
+              content,
+              volcSettings,
+              (stage, msg) => {
+                  setAnalysisState(prev => ({ ...prev, step: stage, message: msg }));
+              }
+          );
+
+          // Update storage directly (Since this runs in background, we must act as source of truth)
+          const saved = localStorage.getItem('sora_script_projects');
+          if (saved) {
+              const projects: ScriptProject[] = JSON.parse(saved);
+              const updatedList = projects.map(p => {
+                  if (p.id === projectId) {
+                      return { ...p, ...projectUpdates, storyboard };
+                  }
+                  return p;
+              });
+              localStorage.setItem('sora_script_projects', JSON.stringify(updatedList));
+          }
+
+          setAnalysisState({ isAnalyzing: false, projectId: null, step: 4, message: 'Analysis Complete' });
+      } catch (e) {
+          console.error("Background Analysis Failed", e);
+          setAnalysisState({ isAnalyzing: false, projectId: null, step: 0, message: 'Failed' });
+      }
+  };
+
   return (
     <GlobalContext.Provider value={{
       lang, setLang, t,
       channels, activeChannelId, activeChannel,
       setActiveChannelId, addChannel, updateChannel, deleteChannel,
       showSettings, setShowSettings,
-      volcSettings, setVolcSettings
+      volcSettings, setVolcSettings,
+      analysisState, triggerBackgroundAnalysis
     }}>
       {children}
     </GlobalContext.Provider>

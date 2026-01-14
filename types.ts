@@ -199,6 +199,33 @@ export interface StoryboardSceneVisual {
   referenceImageUrl?: string;
 }
 
+// AI Analysis Result for a Shot
+export interface RecommendedAngle {
+  name: string; // "Wide Shot", "Medium Shot", "Close Up", "Dynamic"
+  prompt_modifier: string;
+  reason: string;
+}
+
+export interface ShotAnalysis {
+  narrative_description: string;
+  emotion_keywords: string[];
+  lighting_suggestion: string;
+  recommended_angles: RecommendedAngle[]; // Fixed to exactly 4 in service logic
+}
+
+// A variation (Fission) of a shot
+export interface ShotVariation {
+  id: string;
+  type: 'initial' | 'variation';
+  angleName: string; // "Wide", "Close-up" etc.
+  prompt: string;
+  status: TaskStatus;
+  imageUrl?: string;
+  videoTaskId?: string; // If upgraded to video
+  videoUrl?: string;
+  apiTaskId?: string; // For polling
+}
+
 export interface StoryboardShot {
   id: string;
   text: string;
@@ -209,6 +236,10 @@ export interface StoryboardShot {
   characterRefs?: string[];
   sceneVisualIds?: string[];
   propIds?: string[];
+  
+  // Phase 2 Director Console Extensions
+  analysis?: ShotAnalysis;
+  variations?: ShotVariation[]; // Stores the images (Initial + Fissions)
 }
 
 export interface StoryboardScene {
