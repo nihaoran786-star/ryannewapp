@@ -51,6 +51,9 @@ export const ImageGenPage = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const isChatModel = (model: ImageModel) => 
+      model === ImageModel.NANO_BANANA_PRO || model === ImageModel.NANO_BANANA_PRO_CHAT;
+
   // Load/Save Tasks
   useEffect(() => {
     const saved = localStorage.getItem('sora_image_tasks');
@@ -131,7 +134,7 @@ export const ImageGenPage = () => {
   const handleFileSelection = (files: FileList | File[]) => {
       const fileArr = Array.from(files);
       const currentLimit = IMAGE_MODEL_OPTIONS.find(o => o.value === selectedModel)?.maxRefs || 1;
-      if (selectedModel === ImageModel.NANO_BANANA_PRO) {
+      if (isChatModel(selectedModel)) {
           const newFiles = [...selectedImages, ...fileArr].slice(0, currentLimit);
           setSelectedImages(newFiles);
           setImagePreviews(newFiles.map(f => URL.createObjectURL(f)));
@@ -146,9 +149,9 @@ export const ImageGenPage = () => {
     if (!activeChannel?.apiToken) { setError(t('missingToken')); return; }
     if (!prompt.trim()) { setError(lang === 'zh' ? '请输入提示词' : 'Prompt required'); return; }
     if (activeTab === 'img2img') {
-        if (selectedModel === ImageModel.NANO_BANANA_PRO && selectedImages.length === 0) {
+        if (isChatModel(selectedModel) && selectedImages.length === 0) {
             setError(t('noImageSelected')); return;
-        } else if (selectedModel !== ImageModel.NANO_BANANA_PRO && !selectedImage) {
+        } else if (!isChatModel(selectedModel) && !selectedImage) {
             setError(t('noImageSelected')); return;
         }
     }
@@ -165,7 +168,7 @@ export const ImageGenPage = () => {
         createdAt: Date.now(),
         channelId: activeChannel.id,
         type: activeTab,
-        sourceImagePreview: activeTab === 'img2img' ? (selectedModel === ImageModel.NANO_BANANA_PRO ? imagePreviews[0] : imagePreview || undefined) : undefined
+        sourceImagePreview: activeTab === 'img2img' ? (isChatModel(selectedModel) ? imagePreviews[0] : imagePreview || undefined) : undefined
     };
 
     setTasks(prev => [newTask, ...prev]);
@@ -173,14 +176,15 @@ export const ImageGenPage = () => {
     const imageOptions = { aspectRatio: aspectRatio, resolution: resolution };
 
     try {
-        if (selectedModel === ImageModel.NANO_BANANA_PRO) {
+        if (isChatModel(selectedModel)) {
             const filesToUpload = activeTab === 'img2img' ? selectedImages : [];
             const results = await createNanoBananaPro4KTask(
                 activeChannel.baseUrl, 
                 activeChannel.apiToken, 
                 prompt, 
                 filesToUpload,
-                imageOptions
+                imageOptions,
+                selectedModel // Pass model
             );
             setTasks(prev => prev.map(t => t.id === localId ? { ...t, status: 'success', resultUrl: results[0], resultUrls: results } : t));
         } else {
@@ -385,7 +389,7 @@ export const ImageGenPage = () => {
                                         const model = e.target.value as ImageModel;
                                         setSelectedModel(model);
                                         // Clear incompatible files if switching
-                                        if (model !== ImageModel.NANO_BANANA_PRO) {
+                                        if (!isChatModel(model)) {
                                             setSelectedImages([]);
                                             setImagePreviews([]);
                                         }
@@ -410,15 +414,15 @@ export const ImageGenPage = () => {
                                         ${isDragOver 
                                             ? 'border-indigo-600 bg-indigo-50 scale-[1.02] shadow-lg ring-4 ring-indigo-500/10' 
                                             : 'border-gray-200 bg-[#FBFBFB] hover:border-indigo-400 hover:bg-indigo-50/20'}
-                                        ${selectedModel === ImageModel.NANO_BANANA_PRO ? 'min-h-[160px]' : 'aspect-video'}`}
+                                        ${isChatModel(selectedModel) ? 'min-h-[160px]' : 'aspect-video'}`}
                                 >
-                                    <input ref={fileInputRef} type="file" multiple={selectedModel === ImageModel.NANO_BANANA_PRO} accept="image/*" className="hidden" onChange={e => {
+                                    <input ref={fileInputRef} type="file" multiple={isChatModel(selectedModel)} accept="image/*" className="hidden" onChange={e => {
                                         if (e.target.files) handleFileSelection(e.target.files);
                                     }} />
                                     
-                                    {(selectedModel === ImageModel.NANO_BANANA_PRO ? imagePreviews.length > 0 : !!imagePreview) ? (
+                                    {(isChatModel(selectedModel) ? imagePreviews.length > 0 : !!imagePreview) ? (
                                         <div className="w-full h-full flex flex-wrap gap-1 p-2 justify-center content-center relative">
-                                            {selectedModel === ImageModel.NANO_BANANA_PRO ? (
+                                            {isChatModel(selectedModel) ? (
                                                 <>
                                                     {imagePreviews.map((src, idx) => (
                                                         <img key={idx} src={src} className="w-12 h-12 object-cover rounded-md shadow-sm border border-white" />
@@ -447,7 +451,7 @@ export const ImageGenPage = () => {
                                         </div>
                                     )}
                                 </div>
-                                {selectedModel === ImageModel.NANO_BANANA_PRO && selectedImages.length > 0 && (
+                                {isChatModel(selectedModel) && selectedImages.length > 0 && (
                                     <button 
                                         onClick={(e) => { e.stopPropagation(); setSelectedImages([]); setImagePreviews([]); }}
                                         className="text-[10px] text-red-400 hover:text-red-500 font-bold transition-colors ml-1 uppercase tracking-widest"
@@ -465,7 +469,7 @@ export const ImageGenPage = () => {
                                     <select 
                                         value={aspectRatio}
                                         onChange={e => setAspectRatio(e.target.value)}
-                                        disabled={selectedModel === ImageModel.NANO_BANANA_PRO}
+                                        disabled={isChatModel(selectedModel)}
                                         className="w-full bg-[#F5F5F7] border-none rounded-2xl px-5 py-4 text-xs font-black text-[#1D1D1F] focus:ring-2 focus:ring-indigo-500/20 appearance-none cursor-pointer disabled:opacity-50"
                                     >
                                         {['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'].map(r => <option key={r} value={r}>{r}</option>)}
@@ -479,7 +483,7 @@ export const ImageGenPage = () => {
                                     <select 
                                         value={resolution}
                                         onChange={e => setResolution(e.target.value)}
-                                        disabled={selectedModel === ImageModel.NANO_BANANA_PRO}
+                                        disabled={isChatModel(selectedModel)}
                                         className="w-full bg-[#F5F5F7] border-none rounded-2xl px-5 py-4 text-xs font-black text-[#1D1D1F] focus:ring-2 focus:ring-indigo-500/20 appearance-none cursor-pointer disabled:opacity-50"
                                     >
                                         {['1K', '2K', '4K'].map(q => <option key={q} value={q}>{q}</option>)}

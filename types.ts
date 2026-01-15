@@ -22,6 +22,7 @@ export enum SoraModel {
 export enum ImageModel {
   NANO_BANANA_2 = 'nano-banana-2',
   NANO_BANANA_PRO = 'gemini-3-pro-image-preview',
+  NANO_BANANA_PRO_CHAT = 'nano-banana-pro',
 }
 
 export interface ImageModelOption {
@@ -32,8 +33,9 @@ export interface ImageModelOption {
 }
 
 export const IMAGE_MODEL_OPTIONS: ImageModelOption[] = [
-  { value: ImageModel.NANO_BANANA_2, label: 'Banana 2', badge: '标准', maxRefs: 1 },
-  { value: ImageModel.NANO_BANANA_PRO, label: 'Gemini 3 Pro', badge: '14-Refs / 4-Images', maxRefs: 14 },
+  { value: ImageModel.NANO_BANANA_2, label: 'Banana 2', badge: 'Standard', maxRefs: 1 },
+  { value: ImageModel.NANO_BANANA_PRO, label: 'Gemini 3 Pro', badge: '14-Refs', maxRefs: 14 },
+  { value: ImageModel.NANO_BANANA_PRO_CHAT, label: 'Nano Banana Pro', badge: 'Chat', maxRefs: 14 },
 ];
 
 /**
@@ -79,6 +81,7 @@ export interface ImageTask {
   channelId?: string;
   type: 'txt2img' | 'img2img';
   sourceImagePreview?: string;
+  category?: 'character' | 'scene' | 'product' | 'other';
 }
 
 export interface QueryTaskResponse {

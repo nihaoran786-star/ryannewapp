@@ -192,7 +192,8 @@ export const createNanoBananaPro4KTask = async (
     apiToken: string,
     prompt: string,
     files: File[],
-    options?: { aspectRatio?: string; resolution?: string; }
+    options?: { aspectRatio?: string; resolution?: string; },
+    model: string = "gemini-3-pro-image-preview"
 ): Promise<string[]> => {
     const imageParts = await Promise.all(
         files.map(async (file) => ({
@@ -207,7 +208,7 @@ export const createNanoBananaPro4KTask = async (
     if (options?.resolution) finalPrompt += `, ${options.resolution}`;
 
     const payload = {
-        model: "gemini-3-pro-image-preview", 
+        model: model, 
         messages: [{ 
             role: "user", 
             content: [{ type: "text", text: finalPrompt }, ...imageParts] 
