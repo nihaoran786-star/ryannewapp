@@ -1,7 +1,28 @@
 
-
 import { ScriptLine, ScriptLineType, ScriptScene, ScriptCharacter, StoryboardData, StoryboardScene, StoryboardShot, StoryboardCharacter, VolcSettings, ScriptProject, LogicIssue, StoryboardProp, StoryboardSceneVisual } from '../types';
 import { callVolcChatApi, PROMPTS } from './volcEngineService';
+
+export const MOCK_INITIAL_SCRIPT = `INT. FUTURISTIC LAB - NIGHT
+
+A sleek, sterile room bathed in blue light. Holographic screens float in the air.
+
+DR. ELARA VANCE (40s, sharp, intense) types furiously on a terminal.
+
+ELARA
+(whispering)
+Come on... come on...
+
+A green light flashes on the console. SUCCESS.
+
+ELARA
+I did it.
+
+Suddenly, alarms BLARE. Red lights flash.
+
+COMPUTER VOICE
+Breach detected. Sector 4.
+
+Elara grabs a glowing drive and runs.`;
 
 // Simple colors for character highlighting
 const CHAR_COLORS = [
@@ -123,7 +144,7 @@ export const extractCharacters = (lines: ScriptLine[]): ScriptCharacter[] => {
 };
 
 // Base deterministic structure generation
-export const generateStoryboardStructure = (scriptText: string): StoryboardData => {
+export const generateStoryboardStructure = (scriptText: string, initialStyle?: string): StoryboardData => {
   const lines = parseScript(scriptText);
   const baseCharacters = extractCharacters(lines);
   
@@ -170,7 +191,7 @@ export const generateStoryboardStructure = (scriptText: string): StoryboardData 
     props: [],
     scenes: sbScenes,
     lastUpdated: Date.now(),
-    globalStyle: 'Cinematic, Photorealistic, 8k, Film Grain' // Default style
+    globalStyle: initialStyle || 'Cinematic, Photorealistic, 8k, Film Grain'
   };
 };
 
@@ -215,10 +236,12 @@ const safeParseJSON = (str: string) => {
 export const performDeepScriptAnalysis = async (
     scriptText: string, 
     volcSettings: VolcSettings,
-    onProgress?: (stage: number, message: string) => void
+    onProgress?: (stage: number, message: string) => void,
+    globalStyle?: string
 ): Promise<{ projectUpdates: Partial<ScriptProject>, storyboard: StoryboardData }> => {
     
-    const baseData = generateStoryboardStructure(scriptText);
+    // Initialize with the provided global style
+    const baseData = generateStoryboardStructure(scriptText, globalStyle);
     const resultProject: Partial<ScriptProject> = {};
     let finalStoryboard = { ...baseData };
 
@@ -341,34 +364,3 @@ export const performDeepScriptAnalysis = async (
         storyboard: finalStoryboard 
     };
 };
-
-export const MOCK_INITIAL_SCRIPT = `INT. COFFEE SHOP - DAY
-
-A quaint, hipster cafe. Sunlight streams through dirty windows.
-
-ALEX (30s, disheveled) sits at a corner table, typing furiously on a laptop.
-
-             ALEX
-    (muttering)
-  Come on... just one good line.
-
-SARAH (20s, barista) approaches with a pot of coffee.
-
-             SARAH
-  Refill? You look like you need it.
-
-Alex looks up, startled. He knocks his spoon off the table.
-
-             ALEX
-  Oh, uh, yes. Please. I've been awake
-  since Tuesday.
-
-             SARAH
-  Tuesday was three days ago, Alex.
-
-EXT. STREET - MOMENTS LATER
-
-Alex bursts out of the shop, manic energy radiating off him.
-
-             ALEX
-  I've got it! The missing piece!`;

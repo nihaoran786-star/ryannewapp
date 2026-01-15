@@ -297,7 +297,7 @@ export const DirectorConsolePage = () => {
 
   // --- Rendering Helpers ---
 
-  // 1. Loading State (Project Not Found or Loading)
+  // 1. Loading State
   if (!project) {
      return (
         <div className="h-full flex flex-col items-center justify-center bg-[#F5F5F7] text-gray-400 gap-4">
@@ -307,7 +307,7 @@ export const DirectorConsolePage = () => {
      );
   }
 
-  // 2. Empty State (Project exists but NO Storyboard)
+  // 2. Empty State
   if (!project.storyboard) {
       return (
           <div className="h-full flex flex-col items-center justify-center bg-[#F5F5F7] text-[#1D1D1F] p-8 animate-in fade-in zoom-in-95 duration-300">
@@ -323,7 +323,7 @@ export const DirectorConsolePage = () => {
                 onClick={() => navigate(`/project/${projectId}/script`)}
                 className="px-8 py-3 bg-[#007AFF] hover:bg-[#0062CC] text-white rounded-full text-xs font-bold uppercase tracking-wider transition-all shadow-lg shadow-blue-500/30 hover:-translate-y-1"
               >
-                  Go to Script Analysis
+                  {t('back')}
               </button>
           </div>
       );
@@ -339,7 +339,7 @@ export const DirectorConsolePage = () => {
     <div className="h-full bg-[#F5F5F7] text-[#1D1D1F] flex flex-col overflow-hidden font-sans selection:bg-[#007AFF]/20">
       <ImageModal isOpen={!!modalImage} imageUrl={modalImage} onClose={() => setModalImage(null)} />
 
-      {/* Top Toolbar: Light Theme */}
+      {/* Top Toolbar */}
       <div className="h-14 shrink-0 bg-white/80 backdrop-blur-xl border-b border-[#E5E5EA] flex items-center justify-between px-6 z-30">
           <div className="flex items-center gap-4">
               <div className="flex items-center gap-2 text-[#1D1D1F]">
@@ -347,7 +347,6 @@ export const DirectorConsolePage = () => {
                   <h2 className="font-bold text-sm tracking-tight truncate max-w-[150px]">{project.title}</h2>
               </div>
               <div className="h-4 w-[1px] bg-gray-200" />
-              {/* Global Controls */}
               <div className="flex items-center gap-2">
                   <div className="flex items-center gap-2 bg-[#F5F5F7] px-3 py-1.5 rounded-lg border border-transparent hover:border-gray-200 transition-colors">
                       <Layers size={14} className="text-gray-400" />
@@ -380,18 +379,17 @@ export const DirectorConsolePage = () => {
             className="group flex items-center gap-2 px-5 py-2 bg-[#1D1D1F] hover:bg-black text-white rounded-full font-bold text-xs shadow-lg shadow-black/10 transition-all active:scale-95 disabled:opacity-50"
           >
               {isBatchGenerating ? <Loader2 className="animate-spin text-white" size={14}/> : <Wand2 size={14} />}
-              <span>{isBatchGenerating ? 'Processing...' : 'Auto-Generate All'}</span>
+              <span>{isBatchGenerating ? t('submitting') : t('autoGenerateAll')}</span>
           </button>
       </div>
 
-      {/* Main Workspace (3-Pane Layout) */}
       <div className="flex-1 flex overflow-hidden min-h-0">
           
-          {/* Left: Shot List (White) */}
+          {/* Left: Sequence List */}
           <div className="w-72 bg-white border-r border-[#E5E5EA] flex flex-col z-20 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
               <div className="p-3 border-b border-[#F5F5F7] bg-[#FAFAFA]">
                   <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2 pl-2">
-                      <LayoutGrid size={12} /> Sequence
+                      <LayoutGrid size={12} /> {t('sequence')}
                   </h3>
               </div>
               <div className="flex-1 overflow-y-auto custom-scrollbar">
@@ -439,19 +437,17 @@ export const DirectorConsolePage = () => {
               </div>
           </div>
 
-          {/* Center: Stage (Viewport) */}
+          {/* Center: Viewport */}
           <div className="flex-1 bg-[#F5F5F7] flex flex-col relative min-w-0 p-6 gap-4">
               {activeShot ? (
                   <>
-                      {/* Viewport Area */}
                       <div className="flex-1 bg-white rounded-3xl border border-[#E5E5EA] shadow-sm flex flex-col overflow-hidden relative group/stage">
                            <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none" />
                            
-                           {/* Stage Header */}
                            <div className="h-12 border-b border-[#F5F5F7] flex items-center justify-between px-6 bg-white/50 backdrop-blur-sm z-10">
                                <div className="flex items-center gap-2 text-xs font-medium text-gray-500">
                                    <Camera size={14} />
-                                   <span>Stage View</span>
+                                   <span>{t('stageView')}</span>
                                </div>
                                {activeShotVariation && (
                                    <div className="flex items-center gap-2">
@@ -460,14 +456,13 @@ export const DirectorConsolePage = () => {
                                        </span>
                                        {activeShotVariation.status === 'success' && (
                                            <span className="flex items-center gap-1 text-[10px] font-bold text-green-600 bg-green-50 px-2 py-1 rounded">
-                                               <CheckCircle2 size={10} /> Ready
+                                               <CheckCircle2 size={10} /> {t('done')}
                                            </span>
                                        )}
                                    </div>
                                )}
                            </div>
 
-                           {/* Canvas */}
                            <div className="flex-1 flex items-center justify-center p-8 bg-[#FAFAFA] relative overflow-hidden">
                                {activeShotVariation ? (
                                    <div className="relative max-w-4xl w-full aspect-video bg-white rounded-xl overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.08)] border border-gray-100 group animate-in zoom-in-95 duration-300">
@@ -480,16 +475,15 @@ export const DirectorConsolePage = () => {
                                        ) : activeShotVariation.status === 'processing' ? (
                                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-gray-400">
                                                <div className="w-12 h-12 border-4 border-gray-100 border-t-[#007AFF] rounded-full animate-spin" />
-                                               <span className="text-xs font-bold animate-pulse">Rendering Scene...</span>
+                                               <span className="text-xs font-bold animate-pulse">{t('renderingScene')}</span>
                                            </div>
                                        ) : (
                                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-red-400 bg-red-50/50">
                                                <AlertCircle size={32} />
-                                               <span className="text-xs font-bold uppercase tracking-widest">Generation Failed</span>
+                                               <span className="text-xs font-bold uppercase tracking-widest">{t('generationFailed')}</span>
                                            </div>
                                        )}
                                        
-                                       {/* Hover Controls */}
                                        <div className="absolute bottom-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0">
                                            <button 
                                              onClick={() => activeShotVariation.imageUrl && setModalImage(activeShotVariation.imageUrl)}
@@ -504,14 +498,12 @@ export const DirectorConsolePage = () => {
                                        <div className="w-20 h-20 rounded-[28px] bg-gray-100 flex items-center justify-center mb-4">
                                            <ImageIcon size={32} />
                                        </div>
-                                       <p className="text-sm font-bold text-gray-400">No Shot Generated</p>
-                                       <p className="text-xs text-gray-300 mt-1">Use the inspector to create visuals</p>
+                                       <p className="text-sm font-bold text-gray-400">{t('runAnalysisFirst')}</p>
                                    </div>
                                )}
                            </div>
                       </div>
 
-                      {/* Script Bar */}
                       <div className="bg-white rounded-2xl border border-[#E5E5EA] p-5 shadow-sm flex items-center justify-center min-h-[80px]">
                           <p className="text-center font-serif text-lg text-[#1D1D1F] leading-snug max-w-3xl">
                               "{activeShot.text}"
@@ -522,21 +514,20 @@ export const DirectorConsolePage = () => {
                   <div className="flex-1 flex items-center justify-center text-gray-300">
                       <div className="flex flex-col items-center gap-4">
                           <Clapperboard size={64} strokeWidth={1} />
-                          <span className="text-sm font-medium">Select a shot from the sequence to begin</span>
+                          <span className="text-sm font-medium">{t('pleaseSelectProject')}</span>
                       </div>
                   </div>
               )}
           </div>
 
-          {/* Right: Inspector (White) */}
+          {/* Right: Inspector */}
           <div className="w-80 bg-white border-l border-[#E5E5EA] flex flex-col z-20 shadow-[-4px_0_24px_rgba(0,0,0,0.02)]">
               {activeShot ? (
                   <>
-                      {/* Analysis Header */}
                       <div className="p-4 border-b border-[#F5F5F7] flex items-center justify-between bg-[#FAFAFA]">
                           <div className="flex items-center gap-2">
                               <Sparkles size={14} className="text-purple-600" />
-                              <span className="text-[10px] font-bold text-[#1D1D1F] uppercase tracking-widest">Director AI</span>
+                              <span className="text-[10px] font-bold text-[#1D1D1F] uppercase tracking-widest">{t('directorAi')}</span>
                           </div>
                           <button 
                             onClick={() => handleAnalyzeShot(activeScene!.id, activeShot)}
@@ -546,18 +537,15 @@ export const DirectorConsolePage = () => {
                                     ? 'bg-purple-50 text-purple-600 border-purple-100 cursor-wait' 
                                     : 'bg-white hover:bg-purple-50 text-gray-600 hover:text-purple-600 border-gray-200 hover:border-purple-200 shadow-sm'}`}
                           >
-                              {analyzingShotId === activeShot.id ? <Loader2 size={12} className="animate-spin"/> : 'Analyze Shot'}
+                              {analyzingShotId === activeShot.id ? <Loader2 size={12} className="animate-spin"/> : t('analyzeShot')}
                           </button>
                       </div>
 
-                      {/* Content Area */}
                       <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-8">
-                          
-                          {/* Recommended Angles */}
                           {activeShot.analysis ? (
                               <div className="space-y-4 animate-in fade-in slide-in-from-right-4">
                                   <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                                      <Camera size={12} /> Camera Angles
+                                      <Camera size={12} /> {lang === 'zh' ? '推荐镜号' : 'Camera Angles'}
                                   </h4>
                                   {activeShot.analysis.recommended_angles.map((rec, i) => {
                                       const existingVar = activeShot.variations?.find(v => v.angleName === rec.name);
@@ -589,7 +577,6 @@ export const DirectorConsolePage = () => {
                                                             onClick={(e) => { e.stopPropagation(); handleGenerateVideo(activeSceneIndex, activeShotIndex, existingVar); }}
                                                             disabled={generatingVideo[existingVar.id]}
                                                             className="p-2 bg-white/90 hover:bg-[#007AFF] hover:text-white rounded-full text-gray-700 shadow-lg transition-transform hover:scale-110"
-                                                            title="Animate (I2V)"
                                                           >
                                                               {generatingVideo[existingVar.id] ? <Loader2 size={14} className="animate-spin"/> : <Video size={14}/>}
                                                           </button>
@@ -605,15 +592,14 @@ export const DirectorConsolePage = () => {
                                   <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center mb-2 shadow-sm">
                                       <Sparkles size={18} className="text-gray-300" />
                                   </div>
-                                  <p className="text-[10px] uppercase font-bold text-gray-400">Run Analysis First</p>
+                                  <p className="text-[10px] uppercase font-bold text-gray-400">{t('runAnalysisFirst')}</p>
                               </div>
                           )}
 
-                          {/* Variations List */}
                           {activeShot.variations && activeShot.variations.length > 0 && (
                              <div>
                                  <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                                     <Layers size={12} /> Asset Library
+                                     <Layers size={12} /> {t('assetLibrary')}
                                  </h4>
                                  <div className="grid grid-cols-2 gap-3">
                                      {activeShot.variations.map(v => (
@@ -636,19 +622,18 @@ export const DirectorConsolePage = () => {
               ) : (
                   <div className="flex-1 flex flex-col items-center justify-center text-gray-300">
                       <LayoutGrid size={40} className="mb-4 opacity-20" />
-                      <span className="text-xs font-bold uppercase tracking-widest">Select a Shot</span>
+                      <span className="text-xs font-bold uppercase tracking-widest">{lang === 'zh' ? '请选择分镜' : 'Select a Shot'}</span>
                   </div>
               )}
           </div>
       </div>
 
-      {/* Bottom: Timeline (White Theme) */}
+      {/* Bottom: Timeline */}
       <div className="h-52 bg-white border-t border-[#E5E5EA] flex flex-col shrink-0 z-40 shadow-[0_-4px_24px_rgba(0,0,0,0.02)]">
-          {/* Timeline Toolbar */}
           <div className="h-10 bg-white border-b border-[#F5F5F7] flex items-center justify-between px-6">
               <div className="flex items-center gap-4">
                   <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
-                      <Clock size={12} /> Timeline
+                      <Clock size={12} /> {t('timeline')}
                   </span>
                   <div className="h-4 w-[1px] bg-gray-200" />
                   <span className="text-[10px] font-mono font-medium text-gray-500">00:00:00:00</span>
@@ -662,16 +647,13 @@ export const DirectorConsolePage = () => {
               </div>
           </div>
 
-          {/* Timeline Tracks */}
           <div className="flex-1 overflow-x-auto custom-scrollbar-h relative bg-[#F9F9FB] p-6">
-             {/* Ruler Mock */}
              <div className="absolute top-0 left-0 right-0 h-6 border-b border-gray-200 flex items-end px-6 pointer-events-none bg-[#FAFAFA]">
                  {Array.from({length: 20}).map((_, i) => (
                      <div key={i} className="flex-1 border-l border-gray-300 h-2 text-[9px] text-gray-400 pl-1 font-mono">{i}s</div>
                  ))}
              </div>
 
-             {/* Clip Container */}
              <div className="flex gap-2 mt-4 min-w-max pb-2">
                  {timelineShots.map((tShot, idx) => {
                      const isActive = activeShotId === tShot.id;
@@ -693,7 +675,6 @@ export const DirectorConsolePage = () => {
                                  height: '100px'
                              }}
                          >
-                             {/* Content */}
                              {tShot.bestThumb ? (
                                  <img src={tShot.bestThumb} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                              ) : (
@@ -702,7 +683,6 @@ export const DirectorConsolePage = () => {
                                  </div>
                              )}
 
-                             {/* Overlays */}
                              <div className="absolute top-1.5 left-1.5 bg-white/90 px-1.5 py-0.5 rounded text-[8px] font-mono font-bold text-gray-600 shadow-sm backdrop-blur-sm border border-gray-100">
                                  {tShot.sceneNumber}-{tShot.shotIndex + 1}
                              </div>

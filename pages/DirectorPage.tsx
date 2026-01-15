@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   AlertTriangle, Loader2, Plus, Trash2, Video, X, 
@@ -389,15 +388,21 @@ export const DirectorPage = () => {
                                             </div>
                                         </>
                                     ) : task.status === 'failed' ? (
-                                        <div className="w-full h-full flex flex-col items-center justify-center text-red-400 p-8 text-center bg-red-50/20">
+                                        <div className="w-full h-full flex flex-col items-center justify-center text-red-400 p-8 text-center animate-in zoom-in-95 duration-300 bg-[#FFF5F5] w-full h-full justify-center">
                                             <AlertCircle size={40} className="mb-4 opacity-50" />
-                                            <span className="text-[10px] font-black uppercase tracking-widest leading-relaxed">Processing Failed</span>
+                                            <span className="text-sm font-bold text-red-500 leading-relaxed max-w-[240px]">{task.errorMessage || t.failedGen}</span>
                                         </div>
                                     ) : (
-                                        <div className="w-full h-full flex flex-col items-center justify-center gap-4 bg-white">
-                                            <div className="w-14 h-14 border-4 border-[#007AFF]/10 border-t-[#007AFF] rounded-full animate-spin" />
-                                            <span className="text-[10px] font-black text-[#007AFF] uppercase tracking-widest animate-pulse">Masterpiece in progress...</span>
-                                        </div>
+                                        <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50 relative">
+                                               {task.coverUrl && <img src={task.coverUrl} className="absolute inset-0 w-full h-full object-cover opacity-20 blur-md scale-110" />}
+                                               <div className="z-10 flex flex-col items-center gap-5">
+                                                  <div className="relative"><Loader2 size={40} className="text-[#007AFF] animate-spin" /></div>
+                                                  <div className="flex flex-col items-center">
+                                                    <span className="text-xs text-[#007AFF] font-bold tracking-[0.2em] animate-pulse uppercase mb-2">{task.status === 'queued' ? t.wait : t.gen}</span>
+                                                    <span className="text-[10px] font-mono text-[#86868B] bg-white/50 px-2 py-0.5 rounded-full">{Math.round(task.progress)}%</span>
+                                                  </div>
+                                               </div>
+                                            </div>
                                     )}
                                 </div>
                                 <div className="p-6">
@@ -514,7 +519,8 @@ export const DirectorPage = () => {
                         const url = e.dataTransfer.getData('text/plain');
                         if (url) handleUrlDrop(url);
                         else if (e.dataTransfer.files.length > 0) {
-                            const files = Array.from(e.dataTransfer.files).map(f => ({ id: Math.random().toString(), file: f, url: URL.createObjectURL(f), name: f.name }));
+                            // Fixed: Explicitly type 'f' as 'File' to resolve 'unknown' type error in Array.from().map()
+                            const files = Array.from(e.dataTransfer.files).map((f: File) => ({ id: Math.random().toString(), file: f, url: URL.createObjectURL(f), name: f.name }));
                             const limit = IMAGE_MODEL_OPTIONS.find(o => o.value === selectedImageModel)?.maxRefs || 1;
                             setReferenceFiles(prev => [...prev, ...files].slice(-limit));
                         }
@@ -533,7 +539,8 @@ export const DirectorPage = () => {
                     )}
                     <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => {
                         if (e.target.files) {
-                            const files = Array.from(e.target.files).map(f => ({ id: Math.random().toString(), file: f, url: URL.createObjectURL(f), name: f.name }));
+                            // Fixed: Explicitly type 'f' as 'File' to resolve 'unknown' type error in Array.from().map()
+                            const files = Array.from(e.target.files).map((f: File) => ({ id: Math.random().toString(), file: f, url: URL.createObjectURL(f), name: f.name }));
                             const limit = IMAGE_MODEL_OPTIONS.find(o => o.value === selectedImageModel)?.maxRefs || 1;
                             setReferenceFiles(prev => [...prev, ...files].slice(-limit));
                         }

@@ -1,16 +1,16 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import * as ReactRouterDOM from 'react-router-dom';
 import { 
   ArrowLeft, RefreshCw, Wand2, Loader2, AlertCircle, User, 
   Download, Check, Sparkles, ChevronDown, Palette, Copy, 
   Maximize2, X, Clapperboard, Edit3, ArrowRight, FileText, Plus,
-  Image as ImageIcon, Box, Trash2
+  Image as ImageIcon, Box, Trash2, Zap
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
 import { ScriptProject, StoryboardData, ImageModel, StoryboardCharacter, StoryboardShot, StoryboardScene, StoryboardSceneVisual, StoryboardProp } from '../types';
 import { performDeepScriptAnalysis } from '../services/scriptUtils';
-import { createImageGenerationTask, queryImageTask } from '../services/imageService';
+import { createImageGenerationTask, queryImageTask, createNanoBananaPro4KTask } from '../services/imageService';
 
 const { useParams, useNavigate } = ReactRouterDOM as any;
 
@@ -23,17 +23,9 @@ const ARCHETYPES = [
   { label: 'Femme Fatale', desc: 'mysterious, alluring, dramatic lighting, elegant' },
 ];
 
-const DEFAULT_GLOBAL_STYLES = [
-  'Cinematic, Photorealistic, 8k, Film Grain',
-  'Cyberpunk, Neon, High Tech, Dark Atmosphere',
-  'Studio Ghibli, Anime Style, Vivid Colors, Hand Drawn',
-  'Film Noir, Black and White, High Contrast, Shadowy',
-  'Watercolor, Artistic, Soft Edges, Dreamy',
-  'Documentary, Handheld Camera, Raw, Realistic'
-];
-
 /**
- * StoryboardPage (V3.2) - Scene & Prop Management
+ * StoryboardPage (V3.4) - Scene & Prop Management
+ * Updated: Removed Global Style controls (Moved to ScriptEditor).
  */
 export const StoryboardPage = () => {
   const { t, lang, activeChannel, channels, volcSettings } = useGlobal();
@@ -42,20 +34,13 @@ export const StoryboardPage = () => {
 
   const [project, setProject] = useState<ScriptProject | null>(null);
   const [loading, setLoading] = useState(true);
+  
+  // Generating items lock map to prevent duplicate requests
   const [generatingItems, setGeneratingItems] = useState<Record<string, boolean>>({});
   
   // UI State for Editing
   const [editingItem, setEditingItem] = useState<{type: 'char' | 'scene' | 'prop', data: any} | null>(null);
-  const [globalStyle, setGlobalStyle] = useState('');
-  const [isStyleCustom, setIsStyleCustom] = useState(false);
-  const [savedStyles, setSavedStyles] = useState<string[]>([]);
-
-  // Load Saved Styles
-  useEffect(() => {
-    const saved = localStorage.getItem('sora_custom_styles');
-    if (saved) setSavedStyles(JSON.parse(saved));
-  }, []);
-
+  
   // Data Hydration
   useEffect(() => {
     if (!projectId) return;
@@ -75,7 +60,6 @@ export const StoryboardPage = () => {
                     localStorage.setItem('sora_script_projects', JSON.stringify(updatedList));
                 }
                 setProject(found);
-                setGlobalStyle(found.storyboard?.globalStyle || DEFAULT_GLOBAL_STYLES[0]);
             }
         }
         setLoading(false);
@@ -84,42 +68,33 @@ export const StoryboardPage = () => {
     loadProject();
   }, [projectId, volcSettings]);
 
-  // Save changes to local storage
-  const saveProject = (updatedProj: ScriptProject) => {
-      const saved = localStorage.getItem('sora_script_projects');
-      if (saved) {
-          const projects: ScriptProject[] = JSON.parse(saved);
-          const updatedList = projects.map(p => p.id === updatedProj.id ? updatedProj : p);
-          localStorage.setItem('sora_script_projects', JSON.stringify(updatedList));
-          setProject({...updatedProj}); 
-      }
+  /**
+   * Core State Updater
+   * Uses functional updates to prevent stale closures (overwriting data with old snapshots).
+   */
+  const updateProject = (updater: (prev: ScriptProject) => ScriptProject) => {
+      setProject(prev => {
+          if (!prev) return null;
+          const next = updater(prev);
+          
+          // Sync to localStorage
+          const saved = localStorage.getItem('sora_script_projects');
+          if (saved) {
+              const list = JSON.parse(saved);
+              const newList = list.map((p: any) => p.id === next.id ? next : p);
+              localStorage.setItem('sora_script_projects', JSON.stringify(newList));
+          }
+          return next;
+      });
   };
 
-  // Update Global Style
-  useEffect(() => {
-      if (project && project.storyboard && globalStyle !== project.storyboard.globalStyle) {
-          const updatedProj = {
-              ...project,
-              storyboard: { ...project.storyboard, globalStyle }
-          };
-          saveProject(updatedProj);
-      }
-  }, [globalStyle]);
-
-  // Add Custom Style
-  const handleSaveStyle = () => {
-      if (globalStyle && !savedStyles.includes(globalStyle) && !DEFAULT_GLOBAL_STYLES.includes(globalStyle)) {
-          const newStyles = [...savedStyles, globalStyle];
-          setSavedStyles(newStyles);
-          localStorage.setItem('sora_custom_styles', JSON.stringify(newStyles));
-          alert(lang === 'zh' ? '风格已保存' : 'Style Saved');
-      }
+  // Wrapper for simple updates (Legacy compatibility)
+  const saveProject = (updatedProj: ScriptProject) => {
+      updateProject(() => updatedProj);
   };
 
   // Add New Asset Handler
   const handleAddNewAsset = (type: 'char' | 'scene' | 'prop') => {
-      if (!project || !project.storyboard) return;
-      
       const newId = `${type}-${Date.now()}`;
       const newItem = {
           id: newId,
@@ -128,61 +103,67 @@ export const StoryboardPage = () => {
           status: 'queued'
       };
 
-      const sb = { ...project.storyboard };
-      if (type === 'char') sb.characters = [...(sb.characters || []), newItem as any];
-      else if (type === 'scene') sb.sceneVisuals = [...(sb.sceneVisuals || []), newItem as any];
-      else if (type === 'prop') sb.props = [...(sb.props || []), newItem as any];
+      updateProject(prev => {
+          const sb = { ...prev.storyboard! };
+          if (type === 'char') sb.characters = [...(sb.characters || []), newItem as any];
+          else if (type === 'scene') sb.sceneVisuals = [...(sb.sceneVisuals || []), newItem as any];
+          else if (type === 'prop') sb.props = [...(sb.props || []), newItem as any];
+          return { ...prev, storyboard: sb };
+      });
 
-      saveProject({ ...project, storyboard: sb });
       setEditingItem({ type, data: newItem });
   };
 
   // Delete Asset Handler
   const handleDeleteAsset = (itemId: string, type: 'char' | 'scene' | 'prop') => {
-      if (!project || !project.storyboard) return;
       if (!confirm(lang === 'zh' ? '确定删除此资产吗？' : 'Delete this asset?')) return;
       
-      const sb = { ...project.storyboard };
-      if (type === 'char') sb.characters = sb.characters.filter(c => c.id !== itemId);
-      else if (type === 'scene') sb.sceneVisuals = (sb.sceneVisuals || []).filter(c => c.id !== itemId);
-      else if (type === 'prop') sb.props = (sb.props || []).filter(c => c.id !== itemId);
-      
-      saveProject({ ...project, storyboard: sb });
+      updateProject(prev => {
+          const sb = { ...prev.storyboard! };
+          if (type === 'char') sb.characters = sb.characters.filter(c => c.id !== itemId);
+          else if (type === 'scene') sb.sceneVisuals = (sb.sceneVisuals || []).filter(c => c.id !== itemId);
+          else if (type === 'prop') sb.props = (sb.props || []).filter(c => c.id !== itemId);
+          return { ...prev, storyboard: sb };
+      });
+
       if (editingItem?.data.id === itemId) setEditingItem(null);
   };
 
   // Delete Shot Handler
   const handleDeleteShot = (sceneId: string, shotId: string) => {
-      if (!project || !project.storyboard) return;
       if (!confirm(lang === 'zh' ? '确定删除此分镜镜头吗？' : 'Delete this shot?')) return;
 
-      const updatedScenes = project.storyboard.scenes.map(scene => {
-          if (scene.id !== sceneId) return scene;
-          return {
-              ...scene,
-              shots: scene.shots.filter(s => s.id !== shotId)
-          };
+      updateProject(prev => {
+          const updatedScenes = prev.storyboard!.scenes.map(scene => {
+              if (scene.id !== sceneId) return scene;
+              return {
+                  ...scene,
+                  shots: scene.shots.filter(s => s.id !== shotId)
+              };
+          });
+          return { ...prev, storyboard: { ...prev.storyboard!, scenes: updatedScenes } };
       });
-      saveProject({ ...project, storyboard: { ...project.storyboard, scenes: updatedScenes } });
   };
 
   // Update Name Handler
   const handleUpdateName = (itemId: string, newName: string) => {
-      if (!project || !project.storyboard || !editingItem) return;
-      const sb = project.storyboard;
+      if (!editingItem) return;
       const type = editingItem.type;
 
-      let targetList = type === 'char' ? sb.characters : (type === 'scene' ? sb.sceneVisuals : sb.props);
-      if (!targetList) return;
+      updateProject(prev => {
+          const sb = { ...prev.storyboard! };
+          let targetList = type === 'char' ? sb.characters : (type === 'scene' ? sb.sceneVisuals : sb.props);
+          if (!targetList) return prev;
 
-      const updatedList = targetList.map((c: any) => c.id === itemId ? { ...c, name: newName } : c);
-      
-      const newSb = { ...sb };
-      if (type === 'char') newSb.characters = updatedList;
-      else if (type === 'scene') newSb.sceneVisuals = updatedList;
-      else newSb.props = updatedList;
+          const updatedList = targetList.map((c: any) => c.id === itemId ? { ...c, name: newName } : c);
+          
+          if (type === 'char') sb.characters = updatedList;
+          else if (type === 'scene') sb.sceneVisuals = updatedList;
+          else sb.props = updatedList;
+          
+          return { ...prev, storyboard: sb };
+      });
 
-      saveProject({ ...project, storyboard: newSb });
       setEditingItem(prev => prev ? { ...prev, data: { ...prev.data, name: newName } } : null);
   };
 
@@ -200,25 +181,40 @@ export const StoryboardPage = () => {
           ];
 
           for (const item of checkList) {
+             // Only poll if we have a Task ID (Async mode)
              if (item.referenceImageId && item.status === 'processing') {
                  const status = await checkTaskStatus(item.referenceImageId);
                  if (status.done) {
-                     item.referenceImageUrl = status.url;
-                     item.status = status.status as any;
+                     updateProject(prev => {
+                         const s = { ...prev.storyboard! };
+                         const updateList = (list: any[]) => list.map(i => i.id === item.id ? { 
+                             ...i, 
+                             referenceImageUrl: status.url, 
+                             status: status.status 
+                         } : i);
+                         
+                         s.characters = updateList(s.characters);
+                         s.sceneVisuals = updateList(s.sceneVisuals);
+                         s.props = updateList(s.props);
+                         return { ...prev, storyboard: s };
+                     });
                      setGeneratingItems(prev => ({...prev, [item.id]: false}));
-                     hasUpdates = true;
                      if (editingItem?.data.id === item.id) {
-                         setEditingItem(prev => prev ? { ...prev, data: {...item} } : null);
+                         setEditingItem(prev => prev ? { ...prev, data: {...item, referenceImageUrl: status.url, status: status.status} } : null);
                      }
                  } else if (status.failed) {
-                     item.status = 'failed';
+                     updateProject(prev => {
+                         const s = { ...prev.storyboard! };
+                         const updateList = (list: any[]) => list.map(i => i.id === item.id ? { ...i, status: 'failed' } : i);
+                         s.characters = updateList(s.characters);
+                         s.sceneVisuals = updateList(s.sceneVisuals);
+                         s.props = updateList(s.props);
+                         return { ...prev, storyboard: s };
+                     });
                      setGeneratingItems(prev => ({...prev, [item.id]: false}));
-                     hasUpdates = true;
                  }
              }
           }
-
-          if (hasUpdates) saveProject(project);
       }, 3000);
       return () => clearInterval(pollInterval);
   }, [project, activeChannel, editingItem]);
@@ -240,10 +236,15 @@ export const StoryboardPage = () => {
       }
   };
 
-  // Generic Generation Handler
+  /**
+   * Generic Generation Handler
+   * Updated to use `updateProject` (functional update) to prevent stale closures during async operations.
+   */
   const handleGenerateAsset = async (item: any, type: 'char' | 'scene' | 'prop') => {
-      if (!activeChannel?.apiToken) { alert(t('missingToken')); return; }
-      if (!project) return;
+      if (!activeChannel?.apiToken) { 
+          console.warn('API Token missing during generation.'); 
+          return; 
+      }
 
       setGeneratingItems(prev => ({...prev, [item.id]: true}));
       
@@ -252,59 +253,139 @@ export const StoryboardPage = () => {
       if (type === 'scene') promptPrefix = "Environment Concept Art, wide shot, no people";
       if (type === 'prop') promptPrefix = "Product Photography, isolated object, white background, studio lighting";
 
+      // Gemini 3 Pro (Image) is now the default
+      const targetModel = ImageModel.NANO_BANANA_PRO; 
+      // Read global style from project structure
+      const currentGlobalStyle = project?.storyboard?.globalStyle || '';
+      const finalPrompt = `${promptPrefix}, ${item.visualDescription}, ${currentGlobalStyle}`;
+
       try {
-          const apiId = await createImageGenerationTask(
-              activeChannel.baseUrl, 
-              activeChannel.apiToken, 
-              `${promptPrefix}, ${item.visualDescription}, ${globalStyle}`, 
-              ImageModel.NANO_BANANA_2,
-              { aspectRatio: '1:1', resolution: '1K' }
-          );
-          
-          const sb = project.storyboard!;
-          let targetList = type === 'char' ? sb.characters : (type === 'scene' ? sb.sceneVisuals : sb.props);
-          if (!targetList) targetList = [];
-          
-          const updatedList = targetList.map((c: any) => 
-              c.id === item.id ? { ...c, referenceImageId: apiId, status: 'processing' as const } : c
-          );
+          let resultUrl: string | undefined;
+          let apiId: string | undefined;
 
-          const newSb = { ...sb };
-          if (type === 'char') newSb.characters = updatedList;
-          else if (type === 'scene') newSb.sceneVisuals = updatedList;
-          else newSb.props = updatedList;
+          if (targetModel === ImageModel.NANO_BANANA_PRO) {
+              const results = await createNanoBananaPro4KTask(
+                  activeChannel.baseUrl, 
+                  activeChannel.apiToken, 
+                  finalPrompt, 
+                  [], // No reference images for text-to-image
+                  { aspectRatio: '1:1', resolution: '1K' }
+              );
+              
+              if (results && results.length > 0) {
+                  resultUrl = results[0];
+              } else {
+                  throw new Error("No image generated.");
+              }
+          } else {
+              apiId = await createImageGenerationTask(
+                  activeChannel.baseUrl, 
+                  activeChannel.apiToken, 
+                  finalPrompt, 
+                  targetModel,
+                  { aspectRatio: '1:1', resolution: '1K' }
+              );
+          }
+          
+          // Critical Fix: Use functional update to ensure we are modifying the latest state
+          updateProject(currentProject => {
+              if (!currentProject.storyboard) return currentProject;
+              
+              const sb = { ...currentProject.storyboard };
+              const updateList = (list: any[]) => list.map(c => 
+                  c.id === item.id ? { 
+                      ...c, 
+                      status: resultUrl ? 'success' : 'processing',
+                      referenceImageUrl: resultUrl,
+                      referenceImageId: apiId 
+                  } : c
+              );
 
-          saveProject({ ...project, storyboard: newSb });
+              if (type === 'char') sb.characters = updateList(sb.characters || []);
+              else if (type === 'scene') sb.sceneVisuals = updateList(sb.sceneVisuals || []);
+              else if (type === 'prop') sb.props = updateList(sb.props || []);
+
+              return { ...currentProject, storyboard: sb };
+          });
+
       } catch (e: any) {
-          alert(`Failed: ${e.message}`);
+          console.error(`Generation Failed for ${item.name}: ${e.message}`);
+          
+          updateProject(currentProject => {
+              if (!currentProject.storyboard) return currentProject;
+              const sb = { ...currentProject.storyboard };
+              const updateList = (list: any[]) => list.map(c => c.id === item.id ? { ...c, status: 'failed' } : c);
+              
+              if (type === 'char') sb.characters = updateList(sb.characters || []);
+              else if (type === 'scene') sb.sceneVisuals = updateList(sb.sceneVisuals || []);
+              else if (type === 'prop') sb.props = updateList(sb.props || []);
+              
+              return { ...currentProject, storyboard: sb };
+          });
+      } finally {
           setGeneratingItems(prev => ({...prev, [item.id]: false}));
       }
   };
 
+  // --- Auto-Generation Effect ---
+  // Automatically triggers generation for any asset marked as 'queued'
+  useEffect(() => {
+      if (!project?.storyboard || !activeChannel?.apiToken) return;
+      
+      const sb = project.storyboard;
+      const queue: Array<{ item: any, type: 'char' | 'scene' | 'prop' }> = [];
+
+      // Collect all queued items that aren't already generating
+      sb.characters?.forEach(c => { if (c.status === 'queued' && !generatingItems[c.id]) queue.push({ item: c, type: 'char' }); });
+      sb.sceneVisuals?.forEach(s => { if (s.status === 'queued' && !generatingItems[s.id]) queue.push({ item: s, type: 'scene' }); });
+      sb.props?.forEach(p => { if (p.status === 'queued' && !generatingItems[p.id]) queue.push({ item: p, type: 'prop' }); });
+
+      if (queue.length > 0) {
+          console.log(`[Auto-Gen] Found ${queue.length} items to generate.`);
+          
+          // 1. Mark all as generating locally to block re-entry immediately
+          setGeneratingItems(prev => {
+              const next = { ...prev };
+              queue.forEach(q => next[q.item.id] = true);
+              return next;
+          });
+
+          // 2. Fire requests sequentially to avoid rate limits
+          queue.forEach((q, idx) => {
+              setTimeout(() => {
+                  handleGenerateAsset(q.item, q.type);
+              }, idx * 500); // 500ms stagger
+          });
+      }
+  }, [project, activeChannel]); // Important: Effect re-runs when project changes, enabling the next batch if any logic was missed
+
   // Update Visual Description Generic Handler
   const handleUpdateDescription = (itemId: string, newDesc: string) => {
-      if (!project || !project.storyboard || !editingItem) return;
-      const sb = project.storyboard;
+      if (!editingItem) return;
       const type = editingItem.type;
 
-      let targetList = type === 'char' ? sb.characters : (type === 'scene' ? sb.sceneVisuals : sb.props);
-      if (!targetList) return;
+      updateProject(prev => {
+          const sb = { ...prev.storyboard! };
+          let targetList = type === 'char' ? sb.characters : (type === 'scene' ? sb.sceneVisuals : sb.props);
+          if (!targetList) return prev;
 
-      const updatedList = targetList.map((c: any) => c.id === itemId ? { ...c, visualDescription: newDesc } : c);
-      
-      const newSb = { ...sb };
-      if (type === 'char') newSb.characters = updatedList;
-      else if (type === 'scene') newSb.sceneVisuals = updatedList;
-      else newSb.props = updatedList;
+          const updatedList = targetList.map((c: any) => c.id === itemId ? { ...c, visualDescription: newDesc } : c);
+          
+          if (type === 'char') sb.characters = updatedList;
+          else if (type === 'scene') sb.sceneVisuals = updatedList;
+          else sb.props = updatedList;
 
-      saveProject({ ...project, storyboard: newSb });
+          return { ...prev, storyboard: sb };
+      });
+
       setEditingItem(prev => prev ? { ...prev, data: { ...prev.data, visualDescription: newDesc } } : null);
   };
 
   // Smart Prompt Assembly Engine (Display Only)
   const buildShotPrompt = (shot: StoryboardShot, scene: StoryboardScene): string => {
      let parts = [];
-     if (globalStyle) parts.push(`[Style: ${globalStyle}]`);
+     const currentStyle = project?.storyboard?.globalStyle;
+     if (currentStyle) parts.push(`[Style: ${currentStyle}]`);
      if (scene.atmosphere) parts.push(`[Atmosphere: ${scene.atmosphere}]`);
      
      // Auto-link logic (Mocking the @Ref behavior)
@@ -342,15 +423,16 @@ export const StoryboardPage = () => {
   };
 
   const updateConstructedPrompt = (sceneId: string, shotId: string, newPrompt: string) => {
-      if (!project || !project.storyboard) return;
-      const updatedScenes = project.storyboard.scenes.map(scene => {
-          if (scene.id !== sceneId) return scene;
-          return {
-              ...scene,
-              shots: scene.shots.map(s => s.id === shotId ? { ...s, constructedPrompt: newPrompt } : s)
-          };
+      updateProject(prev => {
+          const updatedScenes = prev.storyboard!.scenes.map(scene => {
+              if (scene.id !== sceneId) return scene;
+              return {
+                  ...scene,
+                  shots: scene.shots.map(s => s.id === shotId ? { ...s, constructedPrompt: newPrompt } : s)
+              };
+          });
+          return { ...prev, storyboard: { ...prev.storyboard!, scenes: updatedScenes } };
       });
-      saveProject({ ...project, storyboard: { ...project.storyboard, scenes: updatedScenes } });
   };
 
   const AssetSkeleton = () => (
@@ -394,6 +476,12 @@ export const StoryboardPage = () => {
                       {type === 'char' && <User size={32} />}
                       {type === 'scene' && <ImageIcon size={32} />}
                       {type === 'prop' && <Box size={32} />}
+                      {/* Queued indicator */}
+                      {item.status === 'queued' && (
+                          <div className="absolute top-2 right-2 flex items-center gap-1 bg-yellow-500/10 text-yellow-600 px-2 py-0.5 rounded-full text-[8px] font-bold border border-yellow-200">
+                              <Zap size={8} fill="currentColor" /> Auto
+                          </div>
+                      )}
                   </div>
               )}
               {/* Overlay Actions */}
@@ -434,54 +522,9 @@ export const StoryboardPage = () => {
   return (
     <div className="h-full bg-[#F5F5F7] flex flex-col overflow-hidden">
       
-      {/* Top Bar: Style Settings */}
-      <div className="px-8 py-4 bg-white border-b border-gray-200 shrink-0 flex items-center gap-6 z-10">
-          <div className="flex items-center gap-2 text-sm font-bold text-gray-500 uppercase tracking-wider">
-              <Palette size={16} />
-              {lang === 'zh' ? '全局风格' : 'Visual Style'}
-          </div>
-          <div className="flex-1 flex items-center gap-2">
-              <div className="relative group min-w-[240px]">
-                  <select 
-                      value={isStyleCustom ? 'custom' : globalStyle}
-                      onChange={(e) => {
-                          if (e.target.value === 'custom') {
-                              setIsStyleCustom(true);
-                          } else {
-                              setIsStyleCustom(false);
-                              setGlobalStyle(e.target.value);
-                          }
-                      }}
-                      className="w-full bg-[#F5F5F7] border-none rounded-lg px-3 py-2 text-xs font-bold text-[#1D1D1F] outline-none cursor-pointer hover:bg-gray-100 appearance-none pr-8"
-                  >
-                      <optgroup label="Presets">
-                        {DEFAULT_GLOBAL_STYLES.map(s => <option key={s} value={s}>{s.split(',')[0]}</option>)}
-                      </optgroup>
-                      {savedStyles.length > 0 && (
-                          <optgroup label="My Presets">
-                              {savedStyles.map(s => <option key={s} value={s}>{s.slice(0, 30)}...</option>)}
-                          </optgroup>
-                      )}
-                      <option value="custom">Custom...</option>
-                  </select>
-                  <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-              </div>
-              <input 
-                  value={globalStyle}
-                  onChange={(e) => { setIsStyleCustom(true); setGlobalStyle(e.target.value); }}
-                  placeholder="Custom global prompts (e.g. 8k, cyberpunk)..."
-                  className={`flex-1 bg-[#F5F5F7] border-none rounded-lg px-4 py-2 text-xs font-medium outline-none transition-all ${isStyleCustom ? 'ring-2 ring-[#007AFF]/20 bg-white' : 'text-gray-500'}`}
-              />
-              <button 
-                onClick={handleSaveStyle}
-                className="p-2 bg-[#F5F5F7] hover:bg-[#007AFF] hover:text-white rounded-lg text-gray-400 transition-colors"
-                title="Save as Preset"
-              >
-                  <Plus size={16} />
-              </button>
-          </div>
-      </div>
-
+      {/* Top Bar: Replaced old Style Settings with a cleaner info bar if needed, or remove completely to let ScriptEditor handle it.
+          For now, we remove the Style UI completely as requested. */}
+      
       <div className="flex-1 overflow-y-auto custom-scrollbar p-8">
           
           {/* Script Summary Section (New) */}

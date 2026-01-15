@@ -5,7 +5,23 @@ import { performDeepScriptAnalysis } from '../services/scriptUtils';
 
 export type Lang = 'zh' | 'en';
 
-// --- LOCALIZATION DATA ---
+export interface StylePreset {
+  id: string;
+  nameKey: keyof typeof locales['zh'];
+  prompt: string;
+  isCustom?: boolean;
+  customName?: string; // For user created styles
+}
+
+const DEFAULT_STYLES: StylePreset[] = [
+  { id: 'cine', nameKey: 'cineName', prompt: 'Cinematic, Photorealistic, 8k, Film Grain' },
+  { id: 'cyber', nameKey: 'cyberName', prompt: 'Cyberpunk, Neon, High Tech, Dark Atmosphere' },
+  { id: 'ghibli', nameKey: 'ghibliName', prompt: 'Studio Ghibli, Anime Style, Vivid Colors, Hand Drawn' },
+  { id: 'noir', nameKey: 'noirName', prompt: 'Film Noir, Black and White, High Contrast, Shadowy' },
+  { id: 'water', nameKey: 'waterName', prompt: 'Watercolor, Artistic, Soft Edges, Dreamy' },
+  { id: 'doc', nameKey: 'docName', prompt: 'Documentary, Handheld Camera, Raw, Realistic' },
+];
+
 const locales = {
   zh: {
     title: '星光叙事引擎',
@@ -70,7 +86,6 @@ const locales = {
     volcApiKeyPlaceholder: '输入 API Key',
     textAiConfig: '剧本 AI 配置',
     volcEngine: '火山引擎',
-    // Script Editor
     scenes: '场景',
     back: '返回',
     saved: '已保存',
@@ -91,11 +106,9 @@ const locales = {
     projectTitlePlaceholder: '项目标题',
     aiError: 'AI 错误',
     pleaseSelectProject: '请选择一个项目',
-    // Terminology Update
     horizontal: '横屏',
     vertical: '竖屏',
     square: '方形',
-    // Image Gen
     textToImage: '文字生成图像',
     imageToImage: '垫图生成图像',
     uploadImage: '上传参考',
@@ -105,7 +118,35 @@ const locales = {
     noImageSelected: '请上传图片',
     download: '保存',
     imageGenPlaceholder: '输入提示词生成图像...',
-    dropFeedback: '松开设置'
+    dropFeedback: '松开设置',
+    // Director Console & Styles
+    directorAi: '导演智能',
+    analyzeShot: '分析镜头',
+    runAnalysisFirst: '请先运行分析',
+    sequence: '场次序列',
+    stageView: '舞台预览',
+    assetLibrary: '资产库',
+    timeline: '时间轴',
+    renderingScene: '正在渲染画面...',
+    generationFailed: '生成失败',
+    autoGenerateAll: '自动生成全部',
+    chooseVisualStyle: '选择视觉风格',
+    customSuffix: '自定义后缀',
+    styleOnboardingTitle: '设定项目的画面视觉风格',
+    styleOnboardingDesc: '风格后缀将自动附加到所有分镜提示词中',
+    styleSkip: '暂时跳过',
+    styleApply: '应用并继续',
+    styleNewPreset: '新增风格预设',
+    styleNamePlaceholder: '风格名称 (如：复古70年代)',
+    stylePromptPlaceholder: '后缀提示词 (如：35mm film, warm tones...)',
+    styleSave: '保存预设',
+    styleCustom: '自定义风格',
+    cineName: '电影感',
+    cyberName: '赛博朋克',
+    ghibliName: '吉卜力风',
+    noirName: '黑色电影',
+    waterName: '水彩艺术',
+    docName: '纪实风格'
   },
   en: {
     title: 'StarNarrator',
@@ -170,7 +211,6 @@ const locales = {
     volcApiKeyPlaceholder: 'API Key',
     textAiConfig: 'AI Config',
     volcEngine: 'Volc Engine',
-    // Script Editor
     scenes: 'Scenes',
     back: 'Back',
     saved: 'Saved',
@@ -191,11 +231,9 @@ const locales = {
     projectTitlePlaceholder: 'Title',
     aiError: 'AI Error',
     pleaseSelectProject: 'Select a project',
-    // Terminology Update
     horizontal: 'Landscape',
     vertical: 'Portrait',
     square: 'Square',
-    // Image Gen
     textToImage: 'Text to Image',
     imageToImage: 'Image to Image',
     uploadImage: 'Reference',
@@ -205,14 +243,42 @@ const locales = {
     noImageSelected: 'Upload image first',
     download: 'Save',
     imageGenPlaceholder: 'Describe the image...',
-    dropFeedback: 'Drop Here'
+    dropFeedback: 'Drop Here',
+    // Director Console & Styles
+    directorAi: 'Director AI',
+    analyzeShot: 'Analyze Shot',
+    runAnalysisFirst: 'Run Analysis First',
+    sequence: 'Sequence',
+    stageView: 'Stage View',
+    assetLibrary: 'Asset Library',
+    timeline: 'Timeline',
+    renderingScene: 'Rendering Scene...',
+    generationFailed: 'Generation Failed',
+    autoGenerateAll: 'Auto-Generate All',
+    chooseVisualStyle: 'Visual Style',
+    customSuffix: 'Custom Suffix',
+    styleOnboardingTitle: 'Set Visual Style',
+    styleOnboardingDesc: 'Suffix will be added to all storyboard prompts',
+    styleSkip: 'Skip',
+    styleApply: 'Apply & Continue',
+    styleNewPreset: 'New Preset',
+    styleNamePlaceholder: 'Style Name (e.g. Vintage 70s)',
+    stylePromptPlaceholder: 'Suffix Prompts (e.g. 35mm film, warm tones...)',
+    styleSave: 'Save Preset',
+    styleCustom: 'Custom Style',
+    cineName: 'Cinematic',
+    cyberName: 'Cyberpunk',
+    ghibliName: 'Ghibli',
+    noirName: 'Film Noir',
+    waterName: 'Watercolor',
+    docName: 'Documentary'
   }
 };
 
 interface AnalysisState {
   isAnalyzing: boolean;
   projectId: string | null;
-  step: number; // 0=Idle, 1=Macro, 2=Structure, 3=QC, 4=Complete
+  step: number; 
   message: string;
 }
 
@@ -231,18 +297,19 @@ interface GlobalContextType {
   setShowSettings: (show: boolean) => void;
   volcSettings: VolcSettings;
   setVolcSettings: (settings: VolcSettings) => void;
-  // Analysis
   analysisState: AnalysisState;
-  triggerBackgroundAnalysis: (projectId: string, content: string) => Promise<void>;
+  triggerBackgroundAnalysis: (projectId: string, content: string, globalStyle?: string) => Promise<void>;
+  // Style Lab
+  stylePresets: StylePreset[];
+  addStylePreset: (name: string, prompt: string) => void;
+  deleteStylePreset: (id: string) => void;
 }
 
 const GlobalContext = createContext<GlobalContextType | undefined>(undefined);
 
 export const useGlobal = () => {
   const context = useContext(GlobalContext);
-  if (!context) {
-    throw new Error('useGlobal must be used within a GlobalProvider');
-  }
+  if (!context) throw new Error('useGlobal must be used within a GlobalProvider');
   return context;
 };
 
@@ -256,7 +323,12 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return saved ? JSON.parse(saved) : { apiKey: '', model: '', maxTokens: 8192 };
   });
 
-  // Background Analysis State
+  // Style Lab State
+  const [stylePresets, setStylePresets] = useState<StylePreset[]>(() => {
+      const saved = localStorage.getItem('sora_style_presets');
+      return saved ? JSON.parse(saved) : DEFAULT_STYLES;
+  });
+
   const [analysisState, setAnalysisState] = useState<AnalysisState>({
       isAnalyzing: false,
       projectId: null,
@@ -268,6 +340,7 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   useEffect(() => { localStorage.setItem('sora_lang', lang); }, [lang]);
   useEffect(() => { localStorage.setItem('sora_volc_settings', JSON.stringify(volcSettings)); }, [volcSettings]);
+  useEffect(() => { localStorage.setItem('sora_style_presets', JSON.stringify(stylePresets)); }, [stylePresets]);
 
   useEffect(() => {
     const savedChannels = localStorage.getItem('sora_channels');
@@ -294,35 +367,28 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateChannel = (id: string, updates: Partial<Channel>) => { setChannels(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c)); };
   const deleteChannel = (id: string) => { if (channels.length <= 1) return; const updated = channels.filter(c => c.id !== id); setChannels(updated); if (activeChannelId === id) setActiveChannelId(updated[0].id); };
 
-  // Background Analysis Function
-  const triggerBackgroundAnalysis = async (projectId: string, content: string) => {
+  const addStylePreset = (name: string, prompt: string) => {
+      const newPreset: StylePreset = { id: `style-${Date.now()}`, nameKey: 'styleCustom', prompt, isCustom: true, customName: name };
+      setStylePresets(prev => [...prev, newPreset]);
+  };
+
+  const deleteStylePreset = (id: string) => {
+      setStylePresets(prev => prev.filter(s => s.id !== id));
+  };
+
+  const triggerBackgroundAnalysis = async (projectId: string, content: string, globalStyle?: string) => {
       if (analysisState.isAnalyzing) return;
-      
       setAnalysisState({ isAnalyzing: true, projectId, step: 1, message: 'Starting deep analysis...' });
-
       try {
-          // Perform the heavy lifting
-          const { projectUpdates, storyboard } = await performDeepScriptAnalysis(
-              content,
-              volcSettings,
-              (stage, msg) => {
-                  setAnalysisState(prev => ({ ...prev, step: stage, message: msg }));
-              }
-          );
-
-          // Update storage directly (Since this runs in background, we must act as source of truth)
+          const { projectUpdates, storyboard } = await performDeepScriptAnalysis(content, volcSettings, (stage, msg) => {
+              setAnalysisState(prev => ({ ...prev, step: stage, message: msg }));
+          }, globalStyle);
           const saved = localStorage.getItem('sora_script_projects');
           if (saved) {
               const projects: ScriptProject[] = JSON.parse(saved);
-              const updatedList = projects.map(p => {
-                  if (p.id === projectId) {
-                      return { ...p, ...projectUpdates, storyboard };
-                  }
-                  return p;
-              });
+              const updatedList = projects.map(p => (p.id === projectId ? { ...p, ...projectUpdates, storyboard } : p));
               localStorage.setItem('sora_script_projects', JSON.stringify(updatedList));
           }
-
           setAnalysisState({ isAnalyzing: false, projectId: null, step: 4, message: 'Analysis Complete' });
       } catch (e) {
           console.error("Background Analysis Failed", e);
@@ -337,7 +403,8 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setActiveChannelId, addChannel, updateChannel, deleteChannel,
       showSettings, setShowSettings,
       volcSettings, setVolcSettings,
-      analysisState, triggerBackgroundAnalysis
+      analysisState, triggerBackgroundAnalysis,
+      stylePresets, addStylePreset, deleteStylePreset
     }}>
       {children}
     </GlobalContext.Provider>

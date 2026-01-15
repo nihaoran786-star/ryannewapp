@@ -13,7 +13,6 @@ import { Channel } from '../types';
 const { NavLink, Outlet, useLocation } = ReactRouterDOM as any;
 
 export const Layout = () => {
-  // Fix: Added setLang to the destructuring from useGlobal context
   const { 
     t, lang, setLang, activeChannel, showSettings, setShowSettings, 
     channels, activeChannelId, setActiveChannelId, 
@@ -23,7 +22,7 @@ export const Layout = () => {
   
   const location = useLocation();
   const currentPath = location.pathname.split('/')[1] || 'director';
-  const isProjectActive = currentPath === 'projects' || currentPath === 'script';
+  const isProjectActive = currentPath === 'projects' || currentPath === 'script' || currentPath === 'project';
 
   const [newChannel, setNewChannel] = useState({ name: '', baseUrl: '', apiToken: '' });
   const [isAddingChannel, setIsAddingChannel] = useState(false);
@@ -80,10 +79,10 @@ export const Layout = () => {
             {!isCollapsed && <div className="text-[11px] font-semibold text-[#86868B] uppercase tracking-wider px-3 mb-2 animate-in fade-in">{t('mainNav')}</div>}
             {isCollapsed && <div className="h-4" />} {/* Spacer for collapsed mode */}
             {renderSidebarItem('projects', <FolderKanban size={18} strokeWidth={2} />, t('projects'), isProjectActive)}
+            {renderSidebarItem('assets', <Database size={18} strokeWidth={2} />, t('assets'))}
             
             <div className={`${isCollapsed ? 'pt-4 border-t border-gray-100 mt-4' : 'pt-6'}`}>
               {!isCollapsed && <div className="text-[11px] font-semibold text-[#86868B] uppercase tracking-wider px-3 mb-2 animate-in fade-in">{t('postProd')}</div>}
-              {renderSidebarItem('assets', <Database size={18} strokeWidth={2} />, t('assets'))}
               {renderSidebarItem('movie-recreation', <Film size={18} strokeWidth={2} />, t('movieRec'))}
               {renderSidebarItem('digital-human', <UserRoundSearch size={18} strokeWidth={2} />, t('digitalHuman'))}
             </div>
@@ -142,7 +141,7 @@ export const Layout = () => {
         </div>
       </aside>
 
-      {/* Main Content Area - Full immersive */}
+      {/* Main Content Area */}
       <main className="flex-1 flex flex-col overflow-hidden relative">
         <Outlet />
       </main>
@@ -162,7 +161,6 @@ export const Layout = () => {
             
             <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
 
-              {/* Language Settings (Moved from Header) */}
               <div className="flex items-center justify-between bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
                   <div className="flex items-center gap-3">
                       <div className="p-1.5 bg-gray-100 rounded-lg"><Languages className="text-gray-500 w-4 h-4" /></div>
@@ -174,7 +172,6 @@ export const Layout = () => {
                   </div>
               </div>
               
-              {/* Volc Settings Block */}
               <div className="bg-gradient-to-br from-orange-50 to-white rounded-[24px] p-6 border border-orange-100/50 shadow-sm">
                  <div className="flex items-center gap-3 mb-5"><div className="p-1.5 bg-orange-100 rounded-lg"><Flame className="text-orange-600 w-4 h-4" /></div><h3 className="text-sm font-bold text-[#1D1D1F]">{t('volcSettingsTitle')}</h3></div>
                  <div className="grid grid-cols-2 gap-4">
@@ -183,7 +180,6 @@ export const Layout = () => {
                  </div>
               </div>
 
-              {/* Channels Block */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                     <h3 className="text-[11px] font-bold text-[#86868B] uppercase tracking-wider">{t('activeChannels')}</h3>
@@ -192,7 +188,6 @@ export const Layout = () => {
                     </button>
                 </div>
 
-                {/* Add New Channel Form */}
                 {isAddingChannel && (
                     <div className="p-5 rounded-[20px] border border-[#007AFF] bg-blue-50/50 shadow-sm animate-in slide-in-from-top-2">
                          <div className="flex items-center justify-between mb-4">
@@ -210,7 +205,6 @@ export const Layout = () => {
                     </div>
                 )}
 
-                {/* Active Channel List */}
                 <div className="grid gap-4">
                   {channels.map(c => (
                     <div key={c.id} className={`p-5 rounded-[20px] border transition-all flex flex-col gap-4 ${c.id === activeChannelId ? 'bg-blue-50/50 border-blue-200 shadow-sm' : 'bg-white border-gray-100 hover:border-gray-300 shadow-sm'}`}>
