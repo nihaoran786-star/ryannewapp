@@ -3,116 +3,107 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Sora2 Studio - macOS Style</title>
+    <title>Sora2 Studio - Next Gen</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reactflow@11.11.4/dist/style.css" />
     <script>
       tailwind.config = {
         theme: {
           extend: {
             fontFamily: {
-              sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'San Francisco', 'Segoe UI', 'Roboto', 'sans-serif'],
+              sans: ['Inter', 'sans-serif'],
+              mono: ['JetBrains Mono', 'monospace'],
             },
             colors: {
               apple: {
                 bg: '#F5F5F7',
                 card: '#FFFFFF',
-                text: '#1D1D1F',
-                subtext: '#86868B',
                 blue: '#007AFF',
-                blueHover: '#0071E3',
-                border: 'rgba(0,0,0,0.05)',
-                glass: 'rgba(255, 255, 255, 0.75)',
               }
             },
             boxShadow: {
-              'apple-card': '0 12px 24px -6px rgba(0, 0, 0, 0.05), 0 0 1px rgba(0,0,0,0.1)',
-              'apple-hover': '0 18px 36px -8px rgba(0, 0, 0, 0.08), 0 0 1px rgba(0,0,0,0.12)',
-              'apple-glass': '0 8px 32px 0 rgba(31, 38, 135, 0.07)',
-            },
-            animation: {
-              'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+              'apple-card': '0 8px 30px rgba(0,0,0,0.04)',
+              'apple-hover': '0 20px 40px rgba(0,0,0,0.08)',
             }
           },
         },
       }
     </script>
     <style>
-      body {
-        background-color: #F5F5F7;
-        color: #1D1D1F;
-        font-family: 'Inter', sans-serif;
-        -webkit-font-smoothing: antialiased;
-      }
-      /* Smooth Apple-like scrolling */
-      ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-      }
-      ::-webkit-scrollbar-track {
-        background: transparent; 
-      }
-      ::-webkit-scrollbar-thumb {
-        background: rgba(0,0,0,0.1); 
-        border-radius: 10px;
-        border: 2px solid transparent;
-        background-clip: content-box;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background-color: rgba(0,0,0,0.2); 
-      }
+      body { background-color: #F5F5F7; color: #1D1D1F; -webkit-font-smoothing: antialiased; margin: 0; }
+      .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+      .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 10px; }
       
-      /* Glassmorphism Utilities */
-      .glass-panel {
-        background: rgba(255, 255, 255, 0.75);
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
-        border: 1px solid rgba(255, 255, 255, 0.5);
-      }
-      
-      .glass-modal {
-        background: rgba(255, 255, 255, 0.85);
-        backdrop-filter: saturate(180%) blur(20px);
-        -webkit-backdrop-filter: saturate(180%) blur(20px);
-        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
+      /* React Flow 连线美化 */
+      .react-flow__edge-path { 
+        stroke: #007AFF; 
+        stroke-width: 2.5; 
+        stroke-dasharray: 6; 
+        stroke-linecap: round;
+        filter: drop-shadow(0 2px 4px rgba(0, 122, 255, 0.15));
+        transition: all 0.3s ease;
       }
 
-      /* Custom Range Slider for Audio/Video */
-      input[type=range] {
-        -webkit-appearance: none; 
-        background: transparent; 
+      /* 连线悬停发光 */
+      .react-flow__edge.hovered .react-flow__edge-path,
+      .react-flow__edge:hover .react-flow__edge-path {
+        stroke-width: 5;
+        stroke-dasharray: none;
+        filter: drop-shadow(0 0 12px rgba(0, 122, 255, 0.6));
       }
-      input[type=range]::-webkit-slider-thumb {
-        -webkit-appearance: none;
-        height: 16px;
-        width: 16px;
-        border-radius: 50%;
-        background: #FFFFFF;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-        margin-top: -6px;
-        cursor: pointer;
+
+      .react-flow__edge.animated .react-flow__edge-path {
+        animation: dashdraw 0.8s linear infinite;
       }
-      input[type=range]::-webkit-slider-runnable-track {
-        width: 100%;
-        height: 4px;
-        cursor: pointer;
-        background: rgba(0,0,0,0.1);
-        border-radius: 2px;
+      @keyframes dashdraw { from { stroke-dashoffset: 12; } to { stroke-dashoffset: 0; } }
+      
+      .react-flow__handle { 
+        width: 14px !important; 
+        height: 14px !important; 
+        background: #FFFFFF !important; 
+        border: 2px solid #007AFF !important; 
+        box-shadow: 0 2px 8px rgba(0, 122, 255, 0.15);
+        transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        z-index: 10;
       }
+      .react-flow__handle:hover {
+        transform: scale(1.4);
+        background: #007AFF !important;
+        box-shadow: 0 0 15px rgba(0, 122, 255, 0.5);
+      }
+
+      /* 节点联动高亮效果 */
+      .node-resonance {
+        box-shadow: 0 0 0 3px #007AFF, 0 0 30px rgba(0, 122, 255, 0.4) !important;
+        transform: scale(1.03);
+        z-index: 100 !important;
+      }
+
+      .react-flow__attribution { display: none; }
     </style>
   <script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@^19.2.3",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
     "react/": "https://esm.sh/react@^19.2.3/",
-    "react-router-dom": "https://esm.sh/react-router-dom@6.22.3"
+    "react": "https://esm.sh/react@^19.2.3",
+    "@google/genai": "https://esm.sh/@google/genai@^1.37.0",
+    "three": "https://esm.sh/three@^0.182.0",
+    "@react-three/fiber": "https://esm.sh/@react-three/fiber@^9.5.0",
+    "@react-three/drei": "https://esm.sh/@react-three/drei@^10.7.7",
+    "zustand/": "https://esm.sh/zustand@^5.0.10/",
+    "zustand": "https://esm.sh/zustand@^5.0.10",
+    "react-router-dom": "https://esm.sh/react-router-dom@^7.12.0",
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "reactflow": "https://esm.sh/reactflow@^11.11.4",
+    "dexie": "https://esm.sh/dexie@^4.2.1"
   }
 }
 </script>
 </head>
   <body>
     <div id="root"></div>
+    <script type="module" src="./index.tsx"></script>
   </body>
 </html>

@@ -1,6 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import * as ReactRouterDOM from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { GlobalProvider } from './context/GlobalContext';
 import { Layout } from './components/Layout';
 
@@ -14,9 +14,7 @@ import { DirectorConsolePage } from './pages/DirectorConsolePage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 import { ImageGenPage } from './pages/ImageGenPage';
 import { InfiniteCanvasPage } from './pages/InfiniteCanvasPage';
-import { AssetsPage } from './pages/AssetsPage'; // New
-
-const { HashRouter: Router, Routes, Route, Navigate } = ReactRouterDOM as any;
+import { AssetsPage } from './pages/AssetsPage';
 
 const App = () => {
   return (
@@ -30,16 +28,13 @@ const App = () => {
                     {/* Project Management */}
                     <Route path="projects" element={<ProjectsPage />} />
                     
-                    {/* New Project Workspace Routes */}
+                    {/* Project Workspace Routes */}
                     <Route path="project/:projectId" element={<ProjectWorkspace />}>
                         <Route index element={<Navigate to="script" replace />} />
                         <Route path="script" element={<ScriptPage />} />
                         <Route path="storyboard" element={<StoryboardPage />} />
                         <Route path="director" element={<DirectorConsolePage />} />
                     </Route>
-                    
-                    {/* Legacy/Direct Script Route Redirects for compatibility */}
-                    <Route path="script/:projectId" element={<Navigate to="/project/:projectId/script" replace />} />
                     
                     {/* Media Assets Library */}
                     <Route path="assets" element={<AssetsPage />} />
@@ -58,5 +53,8 @@ const App = () => {
   );
 };
 
-const root = createRoot(document.getElementById('root')!);
-root.render(<App />);
+const rootElement = document.getElementById('root');
+if (rootElement) {
+  const root = createRoot(rootElement);
+  root.render(<App />);
+}

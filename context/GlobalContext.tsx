@@ -351,7 +351,7 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (savedActiveId && parsed.find((p: Channel) => p.id === savedActiveId)) setActiveChannelId(savedActiveId);
       else if (parsed.length > 0) setActiveChannelId(parsed[0].id);
     } else {
-      const defaultChannel: Channel = { id: 'default', name: 'Relay Alpha', baseUrl: 'https://newapi.dkyx.cc', apiToken: '' };
+      const defaultChannel: Channel = { id: 'default', name: 'Relay Alpha', baseUrl: 'https://apimarket.top', apiToken: '' };
       setChannels([defaultChannel]); setActiveChannelId(defaultChannel.id);
     }
   }, []);

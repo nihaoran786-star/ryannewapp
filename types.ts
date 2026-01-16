@@ -1,4 +1,3 @@
-
 // 🛑 DO NOT MODIFY EXISTING ENUM VALUES OR INTERFACE STRUCTURES
 
 /**
@@ -54,7 +53,7 @@ export interface VideoTask {
   id: string; 
   apiId?: string; 
   prompt: string;
-  model: string; // Use string for dynamic mapping
+  model: string; 
   status: TaskStatus;
   progress: number; 
   videoUrl?: string;
@@ -62,7 +61,6 @@ export interface VideoTask {
   errorMessage?: string;
   createdAt: number;
   channelId?: string; 
-  // Added missing properties for TaskCard component
   isCharacterAsset?: boolean;
   characterName?: string;
 }
@@ -75,13 +73,14 @@ export interface ImageTask {
   status: TaskStatus;
   resultUrl?: string;
   resultUrls?: string[];
-  coverIndex?: number; // 用户选择的展示封面索引
+  coverIndex?: number; 
   errorMessage?: string;
   createdAt: number;
   channelId?: string;
   type: 'txt2img' | 'img2img';
   sourceImagePreview?: string;
   category?: 'character' | 'scene' | 'product' | 'other';
+  is360?: boolean; // 新增：是否开启 360 模式
 }
 
 export interface QueryTaskResponse {
@@ -116,7 +115,6 @@ export interface ScriptProject {
   genre?: string[];
   logline?: string;
   synopsis?: string;
-  // Added missing analysis and structural properties
   scenes?: ScriptScene[];
   logicIssues?: LogicIssue[];
   storyboard?: StoryboardData;
@@ -204,7 +202,7 @@ export interface StoryboardSceneVisual {
 
 // AI Analysis Result for a Shot
 export interface RecommendedAngle {
-  name: string; // "Wide Shot", "Medium Shot", "Close Up", "Dynamic"
+  name: string; 
   prompt_modifier: string;
   reason: string;
 }
@@ -213,20 +211,20 @@ export interface ShotAnalysis {
   narrative_description: string;
   emotion_keywords: string[];
   lighting_suggestion: string;
-  recommended_angles: RecommendedAngle[]; // Fixed to exactly 4 in service logic
+  recommended_angles: RecommendedAngle[]; 
 }
 
 // A variation (Fission) of a shot
 export interface ShotVariation {
   id: string;
   type: 'initial' | 'variation';
-  angleName: string; // "Wide", "Close-up" etc.
+  angleName: string; 
   prompt: string;
   status: TaskStatus;
   imageUrl?: string;
-  videoTaskId?: string; // If upgraded to video
+  videoTaskId?: string; 
   videoUrl?: string;
-  apiTaskId?: string; // For polling
+  apiTaskId?: string; 
 }
 
 export interface StoryboardShot {
@@ -240,9 +238,8 @@ export interface StoryboardShot {
   sceneVisualIds?: string[];
   propIds?: string[];
   
-  // Phase 2 Director Console Extensions
   analysis?: ShotAnalysis;
-  variations?: ShotVariation[]; // Stores the images (Initial + Fissions)
+  variations?: ShotVariation[]; 
 }
 
 export interface StoryboardScene {
